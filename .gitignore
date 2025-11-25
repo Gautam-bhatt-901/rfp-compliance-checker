@@ -1,0 +1,287 @@
+# ==================== Environment Variables ====================
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+backend/.env
+backend/.env.prod
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# Keep example files for documentation
+!.env.example
+!backend/.env.example
+!backend/.env.prod.example
+!frontend/.env.example
+
+# ==================== Python (Backend) ====================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+backend/env/
+backend/venv/
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# ==================== Database ====================
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+rfp_app.db
+
+# PostgreSQL
+*.pgsql
+*.dump
+
+# Alembic (keep migration files, ignore temp)
+backend/alembic/versions/*.pyc
+
+# ==================== Uploaded Files ====================
+# User uploaded documents
+backend/data/uploaded_rfps/*
+backend/data/uploaded_docs/*
+
+# Keep directory structure with .gitkeep
+!backend/data/.gitkeep
+!backend/data/uploaded_rfps/.gitkeep
+!backend/data/uploaded_docs/.gitkeep
+
+# Backup files
+*.bak
+backup/
+backups/
+
+# ==================== Node.js (Frontend) ====================
+# Dependencies
+node_modules/
+frontend/node_modules/
+jspm_packages/
+
+# Build output
+dist/
+build/
+frontend/dist/
+frontend/build/
+*.tsbuildinfo
+
+# npm/yarn logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# ==================== Docker ====================
+# Docker volumes data
+docker-data/
+volumes/
+
+# Docker environment files
+docker-compose.override.yml
+
+# ==================== IDE & Editors ====================
+# VSCode
+.vscode/
+.vscode/*
+!.vscode/settings.json.example
+!.vscode/extensions.json.example
+*.code-workspace
+
+# PyCharm / IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ==================== Operating Systems ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ==================== Logs ====================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==================== SSL Certificates ====================
+# Never commit private keys!
+*.key
+*.pem
+*.crt
+*.cer
+*.p12
+*.pfx
+nginx/ssl/*
+!nginx/ssl/.gitkeep
+
+# ==================== Temporary Files ====================
+*.tmp
+*.temp
+.cache/
+.temp/
+tmp/
+temp/
+
+# ==================== Machine Learning Models ====================
+# spaCy models are large, download separately
+*.model
+*.pkl
+*.h5
+*.pt
+
+# ==================== Documentation ====================
+# Don't ignore markdown, but ignore build artifacts
+docs/_build/
+docs/.doctrees/
+site/
+
+# ==================== Misc ====================
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath
+*.sage.py
+
+# Spyder
+.spyderproject
+.spyproject
+
+# Rope
+.ropeproject
+
+# mkdocs
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# pytype
+.pytype/
+
+# Cython
+cython_debug/
