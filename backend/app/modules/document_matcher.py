@@ -258,7 +258,7 @@ class DocumentMatcher:
             # Include content preview if available
             content_preview = ""
             if doc in document_contents:
-                content = document_contents[doc][:500]  # First 500 chars
+                content = document_contents[doc][:10000]  # First 10000 chars
                 content_preview = f"\n   Content Preview: {content}..."
             
             provided_info.append(f"{idx + 1}. Filename: {doc}\n   Cleaned Name: {doc_clean}{content_preview}")

@@ -19,8 +19,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
 
 # Database settings
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./rfp_app.db")
-# For PostgreSQL: DATABASE_URL = "postgresql://user:password@localhost/rfp_db"
+# DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./rfp_app.db")
+DATABASE_URL = "postgresql://rfp_user:admin@localhost:5432/rfp_db"
 
 # ============   Directory Configuration ============
 BASE_DIR = Path(__file__).resolve().parent.parent  # backend/

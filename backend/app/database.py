@@ -7,10 +7,18 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from app import config
 
+# Create engine with proper connection args
+connect_args = {}
+if "sqlite" in config.DATABASE_URL:
+    connect_args = {"check_same_thread": False}
+elif "postgresql" in config.DATABASE_URL:
+    connect_args = {"connect_timeout": 10}
+
 # Create engine
 engine = create_engine(
     config.DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in config.DATABASE_URL else {}
+    connect_args = connect_args,
+    pool_pre_ping=True
 )
 
 # Session factory

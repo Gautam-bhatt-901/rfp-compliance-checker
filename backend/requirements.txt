@@ -18,6 +18,7 @@ python-dotenv==1.0.0
 PyMuPDF==1.23.8
 paddleocr
 paddlepaddle
+pdfplumber
 
 # Document Processing (Multiple Formats)
 python-docx  # Word documents
