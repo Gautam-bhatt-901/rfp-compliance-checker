@@ -11,24 +11,25 @@ alembic
 python-jose[cryptography]==3.3.0
 bcrypt==4.1.2
 
-#Environment
+# Environment
 python-dotenv==1.0.0
 
 # PDF Processing
-PyMuPDF==1.23.8
 paddleocr
 paddlepaddle
+pdfplumber      # Enhanced PDF extraction (tables/layout)
+PyMuPDF         # Fast PDF processing (fitz)
 
 # Document Processing (Multiple Formats)
-python-docx  # Word documents
-markdown  # Markdown files
-python-pptx  # PowerPoint (optional)
-openpyxl  # Excel (optional)
-pypandoc  # Universal document converter
-PyPDF2 
+python-docx     # Word documents
+markdown        # Markdown files
+python-pptx     # PowerPoint (optional)
+openpyxl        # Excel (optional)
+pypandoc        # Universal document converter
+PyPDF2
 
 # LLM APIs
-openai  # GPT-4, GPT-4o
+openai          # GPT-4, GPT-4o
 
 # NLP and Matching
 sentence-transformers
@@ -40,12 +41,16 @@ pandas
 numpy
 
 # Utilities
-Pillow
-python-magic-bin  # For file type detection (Windows)
-ollama
-python-dotenv
-fuzzywuzzy 
+Pillow                  # Image handling for OCR & preprocessing
+python-magic-bin        # For file type detection (Windows)
+fuzzywuzzy
 python-Levenshtein
-psycopg2-binary==2.9.9
 pydantic-settings==2.1.0
 pydantic[email]
+chardet                 # Encoding detection for TXT/MD/RTF
+
+# Optional but recommended for better OCR preprocessing
+opencv-python-headless  # Used if available for denoise + adaptive threshold
+
+# Local LLM / extras
+ollama
