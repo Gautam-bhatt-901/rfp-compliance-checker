@@ -1,12 +1,9 @@
 """
 RFP Analysis routes - UPDATED with history storage
-Main business logic endpoints - PRESERVED from app.py
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import List
-import os
 import shutil
-from pathlib import Path
 from sqlalchemy.orm import Session
 import json
 
@@ -14,7 +11,7 @@ from app.auth import get_current_user
 from app.models import User, AnalysisHistory
 from app.database import get_db
 from app.schemas import AnalysisResult, DocumentMatch, AnalysisHistoryItem, AnalysisHistoryDetail
-from app.dependencies import get_pdf_extractor, get_list_extractor, get_document_matcher
+from app.dependencies import get_pdf_extractor, get_list_extractor, get_document_matcher, get_rag_matcher
 from app.modules.utils import validate_file_extension, clear_directory, format_results_for_display, get_summary_stats
 from app import config
 
@@ -28,25 +25,32 @@ async def analyze_rfp(
     db: Session = Depends(get_db),
     pdf_extractor = Depends(get_pdf_extractor),
     list_extractor = Depends(get_list_extractor),
-    document_matcher = Depends(get_document_matcher)
+    rag_matcher = Depends(get_rag_matcher)
 ):
     """
-    Analyze RFP compliance - UPDATED to store history
-    PRESERVED LOGIC from app.py main processing
+    Analyze RFP compliance using RAG-based matching
     """
     # Validate files
     if not validate_file_extension(rfp_file.filename, config.ALLOWED_EXTENSIONS):
-        raise HTTPException(status_code=400, detail=f"RFP file format not supported. Allowed: {config.ALLOWED_EXTENSIONS}")
+        raise HTTPException(
+            status_code=400, 
+            detail=f"RFP file format not supported. Allowed: {config.ALLOWED_EXTENSIONS}"
+        )
     
     for file in provided_files:
         if not validate_file_extension(file.filename, config.ALLOWED_EXTENSIONS):
-            raise HTTPException(status_code=400, detail=f"File {file.filename} format not supported")
+            raise HTTPException(
+                status_code=400, 
+                detail=f"File {file.filename} format not supported"
+            )
     
-    # Clear previous uploads for this user
+    # Setup user directories
     user_rfp_dir = config.UPLOAD_RFP_DIR / str(current_user.id)
     user_docs_dir = config.UPLOAD_DOCS_DIR / str(current_user.id)
     user_rfp_dir.mkdir(parents=True, exist_ok=True)
     user_docs_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Clear previous uploads
     clear_directory(str(user_rfp_dir))
     clear_directory(str(user_docs_dir))
     
@@ -65,47 +69,100 @@ async def analyze_rfp(
         provided_paths.append(str(file_path))
         provided_filenames.append(file.filename)
     
-    # STEP 1: Extract text from RFP  
+    # STEP 1: Extract text from RFP using pdf_extractor
+    print(f"\n{'='*70}")
+    print(f"🔍 ANALYZING RFP: {rfp_file.filename}")
+    print(f"{'='*70}")
+    
     rfp_pages = pdf_extractor.extract_pages(str(rfp_path))
     full_text_check = " ".join(rfp_pages.values())
     
     if not rfp_pages or len(full_text_check.strip()) < 50:
-        raise HTTPException(status_code=400, detail="Unable to extract sufficient text from RFP document")
+        raise HTTPException(
+            status_code=400, 
+            detail="Unable to extract sufficient text from RFP document"
+        )
     
-    # STEP 2: Extract required documents  
+    print(f"✓ Extracted {len(rfp_pages)} pages from RFP")
+    
+    # STEP 2: Extract required documents from RFP
     required_docs = list_extractor.extract_required_documents(rfp_pages)
     
     if not required_docs:
-        raise HTTPException(status_code=400, detail="No required documents found in RFP")
+        raise HTTPException(
+            status_code=400, 
+            detail="No required documents found in RFP"
+        )
     
-    # STEP 3: Match documents  
-    results = document_matcher.match_documents(
-        required_docs,
-        provided_filenames,
-        provided_paths=provided_paths
-    )
+    print(f"✓ Found {len(required_docs)} required documents")
     
-    # Format results  
+    # STEP 3: INGEST USER DOCUMENTS (RAG Pipeline)
+    if config.USE_RAG_MATCHING:
+        print(f"\n🔮 Using RAG-based matching...")
+        
+        # Ingest all provided documents
+        ingestion_stats = rag_matcher.ingest_user_documents(
+            file_paths=provided_paths,
+            user_id=current_user.id,
+            db=db,
+            clear_existing=True
+        )
+        
+        # STEP 4: FIND MATCHES using vector similarity
+        results = rag_matcher.find_matches(
+            requirements=required_docs,
+            user_id=current_user.id,
+            db=db
+        )
+        
+        # Get costs
+        extraction_cost = getattr(list_extractor, 'extraction_cost', 0.0)
+        rag_total_cost = rag_matcher.get_total_cost()
+
+        validation_cost = 0.0
+        if hasattr(rag_matcher, 'validator') and rag_matcher.validator:
+            validation_cost = rag_matcher.validator.get_total_cost()
+
+        total_cost = extraction_cost + rag_total_cost + validation_cost
+        
+        print(f"  💰 Cost Breakdown:")
+        print(f"     - Extraction: ${extraction_cost:.4f}")
+        print(f"     - RAG Matching: ${rag_total_cost:.4f}")
+        print(f"     - Validation: ${validation_cost:.4f}")
+        print(f"     - Total: ${total_cost:.4f}")
+        
+    else:
+        # Fallback to traditional matching
+        print(f"\n⚠️  RAG disabled, using traditional matching...")
+        from app.dependencies import get_document_matcher
+        document_matcher = get_document_matcher()
+        
+        results = document_matcher.match_documents(
+            required_docs,
+            provided_filenames,
+            provided_paths=provided_paths
+        )
+        
+        extraction_cost = getattr(list_extractor, 'extraction_cost', 0.0)
+        matching_cost = getattr(document_matcher, 'matching_cost', 0.0)
+        total_cost = extraction_cost + matching_cost
+    
+    # Format results for response
     formatted_results = format_results_for_display(results)
     stats = get_summary_stats(formatted_results)
     
-    # Get extraction cost
-    extraction_cost = getattr(list_extractor, 'extraction_cost', 0.0)
-    matching_cost = getattr(document_matcher, 'matching_cost', 0.0)
-    total_cost = extraction_cost + matching_cost
-    
-    # Convert results to response format
+    # Convert to response format
     matches = [
         DocumentMatch(
-            required_document=r['Required Document'],
-            status=r['Status'],
-            matched_file=r['Matched File'],
-            confidence_score=r.get('Confidence', 0.0)
+            required_document = r['Required Document'],
+            status = r['Status'],
+            matched_file = r.get('Matched File') or "N/A",
+            confidence_score = float(r.get('Confidence Score', 0.0))
         )
         for r in formatted_results
     ]
     
-    # NEW: Store analysis in history
+    # Store analysis in history
     analysis_record = AnalysisHistory(
         user_id=current_user.id,
         rfp_filename=rfp_file.filename,
@@ -122,14 +179,26 @@ async def analyze_rfp(
                     'required_document': r['Required Document'],
                     'status': r['Status'],
                     'matched_file': r['Matched File'],
-                    'confidence': r.get('Confidence', 0.0)
+                    'confidence': float(r.get('Confidence Score', 0.0))
                 }
                 for r in formatted_results
             ]
         })
     )
+    
     db.add(analysis_record)
     db.commit()
+    
+    print(f"\n{'='*70}")
+    print(f"✅ ANALYSIS COMPLETE")
+    print(f"{'='*70}")
+    print(f"  Total Requirements: {stats['total']}")
+    print(f"  Matched: {stats['present']}")
+    print(f"  Review Needed: {stats['review']}")
+    print(f"  Missing: {stats['missing']}")
+    print(f"  Completion: {stats['completion_rate']:.1f}%")
+    print(f"  Total Cost: ${total_cost:.6f}")
+    print(f"{'='*70}\n")
     
     return AnalysisResult(
         total=stats['total'],

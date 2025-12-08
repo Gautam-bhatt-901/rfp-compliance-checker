@@ -36,8 +36,9 @@ class UserOut(BaseModel):
 class DocumentMatch(BaseModel):
     required_document: str
     status: str
-    matched_file: str
+    matched_file: Optional[str] = "N/A"
     confidence_score: Optional[float] = None
+    details: Optional[str] = None
 
 class AnalysisResult(BaseModel):
     total: int

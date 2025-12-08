@@ -76,7 +76,7 @@ export default function Navbar() {
             }}
             onClick={() => navigate('/dashboard')}
           >
-            RFP Checker
+            RFP Pre Evaluator
           </Typography>
 
           {/* Navigation Items */}

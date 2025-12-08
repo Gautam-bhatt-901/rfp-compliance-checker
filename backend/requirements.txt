@@ -14,13 +14,12 @@ bcrypt==4.1.2
 #Environment
 python-dotenv==1.0.0
 
-# PDF Processing
-PyMuPDF==1.23.8
+# Document Processing (Multiple Formats)
+PyMuPDF==1.26.6
+pymupdf4llm
 paddleocr
 paddlepaddle
 pdfplumber
-
-# Document Processing (Multiple Formats)
 python-docx  # Word documents
 markdown  # Markdown files
 python-pptx  # PowerPoint (optional)
@@ -36,12 +35,18 @@ sentence-transformers
 spacy
 torch
 
+#Langchain
+langchain
+langchain-community
+langchain-openai
+langchain-postgres
+
 # Data Processing
 pandas
 numpy
 
 # Utilities
-Pillow
+pillow
 python-magic-bin  # For file type detection (Windows)
 ollama
 python-dotenv
@@ -50,3 +55,12 @@ python-Levenshtein
 psycopg2-binary==2.9.9
 pydantic-settings==2.1.0
 pydantic[email]
+pgvector
+pypdf
+tiktoken
+redis
+aiofiles
+asyncpg
+
+beautifulsoup4
+chardet

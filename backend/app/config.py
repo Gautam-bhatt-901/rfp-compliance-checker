@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# ============ NEW: API SETTINGS ============
+# ============ API SETTINGS ============
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production-min-32-chars")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
@@ -33,8 +33,42 @@ for directory in [DATA_DIR, UPLOAD_RFP_DIR, UPLOAD_DOCS_DIR]:
     directory.mkdir(parents=True, exist_ok=True)
 
 # ============   PDF Extraction Settings ============
-PDF_TEXT_THRESHOLD = 100
-OCR_CONFIDENCE_THRESHOLD = 0.5
+PDF_TEXT_THRESHOLD = 50
+OCR_CONFIDENCE_THRESHOLD = 0.6
+
+# ============ RAG SETTINGS  ============
+USE_RAG_MATCHING = os.getenv('USE_RAG_MATCHING', 'true').lower() == 'true'
+
+# Chunking Configuration
+CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', '1000'))
+CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', '200'))
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
+
+# Database Performance
+DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '20'))
+DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '10'))
+DB_POOL_RECYCLE = int(os.getenv('DB_POOL_RECYCLE', '3600'))
+
+# RAG Thresholds
+RAG_CONFIDENCE_HIGH = 0.60  # Present
+RAG_CONFIDENCE_MEDIUM = 0.45  # Review
+RAG_CONFIDENCE_LOW = 0.30  # Missing
+
+# Content Extraction
+MAX_PAGES_TO_EXTRACT = int(os.getenv('MAX_PAGES_TO_EXTRACT', '0'))  # 0 = all pages
+
+# Redis Cache (optional)
+ENABLE_REDIS_CACHE = os.getenv('ENABLE_REDIS_CACHE', 'false').lower() == 'true'
+REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+
+# ============ HYBRID RAG + LLM SETTINGS ============
+USE_RAG_MATCHING = os.getenv('USE_RAG_MATCHING', 'true').lower() == 'true'
+RAG_USE_LLM_VERIFICATION = os.getenv('RAG_USE_LLM_VERIFICATION', 'true').lower() == 'true'
+RAG_TOP_K_CHUNKS = int(os.getenv('RAG_TOP_K_CHUNKS', '5'))  # Retrieve top 5 chunks
+
+# LLM Verification Model (use GPT-4o-mini for cost savings)
+RAG_VERIFICATION_MODEL = os.getenv('RAG_VERIFICATION_MODEL', 'gpt-4o-mini')
+RAG_VERIFICATION_MAX_TOKENS = 500
 
 # ============   Document Matching Settings ============
 SENTENCE_TRANSFORMER_MODEL = 'all-MiniLM-L6-v2'
@@ -92,7 +126,7 @@ SPACY_CONFIDENCE_THRESHOLD = 5
 SPACY_KEYWORD_COVERAGE = 0.6
 
 # Cost Control
-MAX_INPUT_TOKENS = 8000
+MAX_INPUT_TOKENS = 30000
 ENABLE_COST_TRACKING = True
 
 # ============   Document Keywords ============
@@ -131,3 +165,49 @@ RESULT_COLUMNS = ['Required Document', 'Status', 'Matched File', 'Confidence Sco
 STATUS_PRESENT = '✅ Present'
 STATUS_MISSING = '❌ Missing'
 STATUS_REVIEW = '⚠️ Review Needed'
+
+# ============ ENHANCED DOCUMENT EXTRACTION SETTINGS ============
+# Extraction Strategy
+USE_ENHANCED_EXTRACTION = os.getenv('USE_ENHANCED_EXTRACTION', 'true').lower() == 'true'
+
+# PyMuPDF4LLM Configuration
+PYMUPDF4LLM_PAGE_CHUNKS = os.getenv('PYMUPDF4LLM_PAGE_CHUNKS', 'true').lower() == 'true'
+PYMUPDF4LLM_WRITE_IMAGES = os.getenv('PYMUPDF4LLM_WRITE_IMAGES', 'false').lower() == 'true'
+PYMUPDF4LLM_TABLE_STRATEGY = os.getenv('PYMUPDF4LLM_TABLE_STRATEGY', 'lines_strict')  # 'lines', 'lines_strict', 'explicit'
+PYMUPDF4LLM_EXTRACT_WORDS = os.getenv('PYMUPDF4LLM_EXTRACT_WORDS', 'false').lower() == 'true'
+
+# Table Handling
+TABLE_AS_SINGLE_CHUNK = os.getenv('TABLE_AS_SINGLE_CHUNK', 'true').lower() == 'true'
+TABLE_MAX_CHARS = int(os.getenv('TABLE_MAX_CHARS', '4000'))
+MARKDOWN_TABLE_DETECTION = os.getenv('MARKDOWN_TABLE_DETECTION', 'true').lower() == 'true'
+
+# Fallback Configuration
+EXTRACTION_FALLBACK_ENABLED = os.getenv('EXTRACTION_FALLBACK_ENABLED', 'true').lower() == 'true'
+
+# PaddleOCR Configuration
+PADDLEOCR_USE_GPU = os.getenv('PADDLEOCR_USE_GPU', 'false').lower() == 'true'
+PADDLEOCR_LANG = os.getenv('PADDLEOCR_LANG', 'en')
+PADDLEOCR_SHOW_LOG = os.getenv('PADDLEOCR_SHOW_LOG', 'false').lower() == 'true'
+
+POPPLER_PATH = os.getenv('POPPLER_PATH', None)
+
+
+# ============ COMPLIANCE VALIDATION SETTINGS ============
+
+# Enable enhanced validation with structured data extraction
+ENABLE_STRUCTURED_VALIDATION = os.getenv('ENABLE_STRUCTURED_VALIDATION', 'true').lower() == 'true'
+
+# Validation confidence thresholds
+VALIDATION_CONFIDENCE_HIGH = float(os.getenv('VALIDATION_CONFIDENCE_HIGH', '0.85'))
+VALIDATION_CONFIDENCE_MEDIUM = float(os.getenv('VALIDATION_CONFIDENCE_MEDIUM', '0.65'))
+
+# Numeric validation settings
+NUMERIC_EXTRACTION_PRECISION = int(os.getenv('NUMERIC_EXTRACTION_PRECISION', '2'))  # Decimal places
+
+# Date validation settings
+DATE_VALIDATION_BUFFER_DAYS = int(os.getenv('DATE_VALIDATION_BUFFER_DAYS', '0'))  # Grace period for expiry
+
+# Count validation settings
+COUNT_VALIDATION_STRICT = os.getenv('COUNT_VALIDATION_STRICT', 'true').lower() == 'true'
+
+print(f"✓ Structured Validation: {'ENABLED' if ENABLE_STRUCTURED_VALIDATION else 'DISABLED'}")

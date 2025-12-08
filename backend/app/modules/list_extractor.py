@@ -113,7 +113,7 @@ class ListExtractor:
         if self.llm_available:
             print(f"\n🤖 STAGE 1: API LLM extraction ({self.active_provider.upper()})...")
             try:
-                llm_results = self._extract_with_llm(final_context_text, [])
+                llm_results = self.extract_with_llm(final_context_text, [])
                 
                 if llm_results and len(llm_results) >= 3:
                     print(f" ✓ LLM extraction successful: {len(llm_results)} documents found")
@@ -160,9 +160,10 @@ class ListExtractor:
         # --- Configuration ---
         # Keywords that signal a requirements section
         hot_keywords = [
-            'checklist', 'annexure', 'appendix', 'submission', 'mandatory', 
-            'eligibility', 'qualification', 'enclosure', 'documents required', 
-            'technical bid', 'financial bid', 'format'
+            'checklist', 'annexure', 'appendix', 'submission', 'mandatory', 'criteria',
+            'eligibility', 'eligibility requirement','qualification', 'enclosure', 'documents required', 
+            'technical bid', 'financial bid', 'format', 'required documents', 'technical qualification'
+            'documentary evidence', 'undertaking', 'certificate', 'proof', 'supporting documents'
         ]
         
         # --- Scoring ---
@@ -185,164 +186,239 @@ class ListExtractor:
         # --- Selection Strategy ---
         selected_indices = set()
         
-        # 1. Always include First 3 pages (Introduction / TOC)
-        for i in range(1, min(4, total_pages + 1)):
-            selected_indices.add(i)
-            
-        # 2. Always include Last 3 pages (Often Checklists/Annexures)
-        for i in range(max(1, total_pages - 2), total_pages + 1):
-            selected_indices.add(i)
-            
-        # 3. Select Top N Scoring Pages from the middle
-        # Filter out pages we already selected
-        remaining_pages = [p for p in page_scores.keys() if p not in selected_indices]
+        # DYNAMIC SELECTION BASED ON DOCUMENT SIZE
+        if total_pages <= 30:
+            # Small docs: Use most pages
+            intro_pages = min(5, total_pages)
+            end_pages = min(5, total_pages)
+            top_scorers_count = max(10, total_pages - 10)
+        elif total_pages <= 100:
+            # Medium docs: Balanced selection
+            intro_pages = 5
+            end_pages = 5
+            top_scorers_count = 20
+        else:
+            # Large docs: Aggressive selection
+            intro_pages = 10
+            end_pages = 10
+            top_scorers_count = 40  # INCREASED from 5 to 40
         
-        # Sort remaining by score
+        # 1. Include intro pages
+        for i in range(1, min(intro_pages + 1, total_pages + 1)):
+            selected_indices.add(i)
+        
+        # 2. Include end pages
+        for i in range(max(1, total_pages - end_pages + 1), total_pages + 1):
+            selected_indices.add(i)
+        
+        # 3. Select Top N Scoring Pages
+        remaining_pages = [p for p in page_scores.keys() if p not in selected_indices]
         sorted_pages = sorted(remaining_pages, key=lambda x: page_scores[x], reverse=True)
         
-        # Take top 5 highest scoring pages
-        top_scorers = sorted_pages[:5]
+        # IMPORTANT: Take more high-scoring pages for large documents
+        top_scorers = sorted_pages[:top_scorers_count]
         selected_indices.update(top_scorers)
         
-        # --- Context Expansion ---
-        # If we picked page 50, page 51 might continue the list. 
-        # Add neighbors for high scoring pages.
+        # 4. Add neighbors for high scoring pages
         neighbors = set()
-        for p in top_scorers:
-            if p + 1 <= total_pages: neighbors.add(p + 1)
-            if p - 1 >= 1: neighbors.add(p - 1)
-        
+        for p in top_scorers[:20]:  # Only add neighbors for top 20 scorers
+            if p + 1 <= total_pages:
+                neighbors.add(p + 1)
+            if p - 1 >= 1:
+                neighbors.add(p - 1)
         selected_indices.update(neighbors)
-
-        # --- Synthesis ---
-        # Sort indices to maintain document flow
+        
+        # 5. SAFETY CHECK: If we have too many pages, estimate text size
         final_indices = sorted(list(selected_indices))
         
-        print(f"✓ Selected {len(final_indices)} relevant pages: {final_indices}")
+        # Estimate total characters
+        estimated_chars = 0
+        for p in final_indices:
+            estimated_chars += len(pages[p])
         
-        # Construct the final text with markers
+        # If exceeds limit, prioritize highest scoring pages
+        max_chars_allowed = config.MAX_INPUT_TOKENS * 5
+        if estimated_chars > max_chars_allowed:
+            print(f"⚠️ Estimated {estimated_chars} chars exceeds limit. Prioritizing high-score pages...")
+            
+            # Re-sort by score and take top pages until under limit
+            sorted_by_score = sorted(final_indices, key=lambda x: page_scores[x], reverse=True)
+            final_indices = []
+            current_chars = 0
+            
+            for page_num in sorted_by_score:
+                page_chars = len(pages[page_num])
+                if current_chars + page_chars <= max_chars_allowed:
+                    final_indices.append(page_num)
+                    current_chars += page_chars
+                else:
+                    break
+            
+            final_indices = sorted(final_indices)
+        
+        print(f"✓ Selected {len(final_indices)} relevant pages (from {total_pages} total)")
+        print(f"✓ Coverage: {len(final_indices)/total_pages*100:.1f}% of document")
+        
+        # Construct the final text
         combined_text = ""
         for p in final_indices:
             combined_text += f"\n--- [PAGE {p}] ---\n"
             combined_text += pages[p]
-            
+        
+        print(f"✓ Combined text length: {len(combined_text):,} characters")
+        
         return combined_text
     
-    def _extract_with_llm(
-        self,
-        rfp_text: str,
-        spacy_candidates: List[str]
-    ) -> List[Dict]:
+    def extract_with_llm(self, rfp_text: str, spacy_candidates: List[str]) -> List[Dict]:
         """
-        Universal LLM extraction with validation
-        Works across different RFP formats
+        Enhanced LLM extraction with structured requirement parsing
+        Extracts validation rules, not just document names
         """
         
-        # Truncate text if too long
-        max_chars = config.MAX_INPUT_TOKENS * 3  # Rough estimate
+        max_chars = config.MAX_INPUT_TOKENS * 5
         if len(rfp_text) > max_chars:
-            print(f" ℹ️ Truncating RFP text from {len(rfp_text)} to {max_chars} chars")
+            print(f"  ⚠ Truncating RFP text from {len(rfp_text)} to {max_chars} chars")
             rfp_text = rfp_text[:max_chars]
         
-        # Build universal prompt
-        prompt = self._build_extraction_prompt(rfp_text, spacy_candidates)
+        # Build enhanced prompt with validation rules
+        prompt = self._build_extraction_prompt(rfp_text)
         
-        # Get raw extraction from LLM
+        # Get LLM response
         raw_documents = []
-        if self.active_provider == 'openai':
+        if self.active_provider == "openai":
             raw_documents = self._extract_with_openai(prompt)
-        elif self.active_provider == 'anthropic':
+        elif self.active_provider == "anthropic":
             raw_documents = self._extract_with_anthropic(prompt)
         else:
             return []
         
-        print(f" → Raw LLM extraction: {len(raw_documents)} items")
+        print(f"  → Raw LLM extraction: {len(raw_documents)} items")
         
-        # Apply universal validation
+        # Validate and clean
         validated_documents = self._validate_and_clean_documents(raw_documents)
-        print(f" → After validation: {len(validated_documents)} valid documents")
         
-        # If validation removed too many, try with lower temperature
-        if len(validated_documents) < 3 and len(raw_documents) > 5:
-            print(f" ⚠️ Warning: Heavy filtering detected. Check RFP format.")
+        print(f"  → After validation: {len(validated_documents)} valid requirements")
         
         return validated_documents
     
-    def _build_extraction_prompt(self, rfp_text: str, spacy_candidates: List[str]) -> str:
+    def _build_extraction_prompt(self, rfp_text: str, spacy_candidates: List[str] = None) -> str:
         """
-        Universal extraction prompt that works across different RFP formats
-        Uses two-stage thinking: identify → validate
+        Enhanced prompt that extracts structured requirements with validation rules
         """
+        
+        prompt = f"""You are an expert RFP analyst. Extract COMPLIANCE REQUIREMENTS with validation rules.
 
-        prompt = f"""You are an expert RFP document analyst. Your task is to extract a comprehensive list of REQUIRED DOCUMENTS that a bidder must submit.
+CRITICAL: Extract REQUIREMENTS (compliance criteria), NOT just document names.
 
-## CORE DEFINITION:
-A **SUBMITTABLE DOCUMENT** is something tangible that:
-- Can be physically or digitally attached/submitted
-- Has a clear document type (certificate, form, letter, statement, etc.)
-- Can be identified by a noun phrase (not a sentence or instruction)
-- Would appear in a document checklist
- 
-## UNIVERSAL EXTRACTION RULES (Work for ANY RFP format):
- 
-### ✅ EXTRACT (Document Names):
-- Certificates: "Tax Clearance Certificate", "ISO Certification"
-- Forms: "Bid Security Form", "Technical Proposal Form"
-- Copies: "Copy of Registration", "Photocopy of PAN Card"
-- Statements: "Audited Financial Statement", "Bank Statement"
-- Letters: "Letter of Intent", "Experience Letter"
-- Reports: "Annual Report", "Audit Report"
-- Proofs: "Proof of turnover", "Address Proof"
-- CVs/Resumes: "CV of Project Manager", "Resume with experience"
-- Agreements: "Partnership Deed", "Contract Agreement"
-- Licenses: "Business License", "Trade License"
- 
-### ❌ DO NOT EXTRACT (Not Documents):
-- **Instructions**: "The bidder shall submit", "Firm should provide"
-- **Criteria**: "Average turnover should be", "Experience of 5 years"
-- **Process descriptions**: "Technical evaluation will be done"
-- **Section headers only**: "Eligibility Criteria" (unless followed by specific doc)
-- **Incomplete phrases**: "Position K-1 (Partner" (missing the document part)
-- **List markers alone**: "a)", "1.", "ii)"
-- **Generic phrases**: "supporting documents", "relevant papers"
-- **Evaluation text**: "Marks will be awarded for"
- 
-## DECISION FRAMEWORK:
-For each potential item, ask:
-1. **Is this a NOUN PHRASE?** (Yes = might be document, No = reject)
-2. **Can this be PHYSICALLY SUBMITTED?** (Yes = might be document, No = reject)
-3. **Does it NAME a specific document TYPE?** (Yes = extract, No = reject)
-4. **Is it COMPLETE?** (Yes = extract, No = reject)
- 
-## YOUR TASK:
-Read this RFP carefully. Extract ONLY the names of submittable documents.
- 
-**RFP TEXT:**
+For each requirement, determine:
+1. What is being verified (turnover, certification, employee count, etc.)
+2. What is the threshold/rule (≥ 50 Cr, valid certification, 100+ employees)
+3. How to validate (average of 3 years, check expiry date, count total)
+4. What documents would prove it
+
+REQUIREMENT TYPES:
+- numeric_threshold: Financial values, counts with minimum/maximum (e.g., "turnover ≥ ₹50 Cr")
+- date_validity: Time-based validation (e.g., "certification valid as of date")
+- count_threshold: Counting items (e.g., "at least 100 employees")
+- multi_condition: Multiple sub-requirements with AND/OR (e.g., "ISO 9001 AND ISO 20000 AND CMMI")
+- document_existence: Simple document presence (e.g., "PAN card copy")
+
+EXTRACTION RULES:
+1. If requirement has numeric threshold (₹, Rs, crores, lakhs, years, count):
+   → validation_type = "numeric_threshold"
+   → Extract threshold value, unit, calculation method
+
+2. If requirement mentions validity, expiry, "as of date", "current":
+   → validation_type = "date_validity"
+
+3. If requirement says "at least X", "minimum X", where X is a count:
+   → validation_type = "count_threshold"
+
+4. If requirement has multiple parts with AND/OR:
+   → validation_type = "multi_condition"
+   → List all conditions
+
+5. If simple document requirement:
+   → validation_type = "document_existence"
+
+RFP TEXT:
 {rfp_text}
 
-## OUTPUT FORMAT:
-Return valid JSON with this structure:
+Example OUTPUT FORMAT (JSON object):
 {{
   "required_documents": [
     {{
-      "document_name": "Exact Document Name",
-      "category": "Legal|Financial|Technical|Other",
-      "criticality": "Mandatory|Important|Optional",
-      "context": "Brief quote from RFP defining this requirement"
+      "criterion_id": "1",
+      "document_name": "Company Registration Certificate",
+      "description": "Company registered under Companies Act with 5+ years operation",
+      "validation_type": "date_validity",
+      "threshold": 5,
+      "unit": "years",
+      "calculation": "age_from_incorporation",
+      "context": "Must be registered company with 5+ years of operations",
+      "criticality": "Mandatory",
+      "evidence_documents": ["Certificate of Registration", "MoA", "Incorporation Certificate"]
+    }},
+    {{
+      "criterion_id": "2",
+      "document_name": "CA Certificate - Annual Turnover",
+      "description": "Average annual turnover ≥ Rs. 50 crores over last 3 financial years",
+      "validation_type": "numeric_threshold",
+      "threshold": 50,
+      "unit": "crores",
+      "years_required": 3,
+      "calculation": "average",
+      "context": "From business of providing technical manpower only",
+      "criticality": "Mandatory",
+      "evidence_documents": ["CA Certificate", "Audited Balance Sheet", "Financial Statement"]
+    }},
+    {{
+      "criterion_id": "3",
+      "document_name": "CA Certificate - Net Worth",
+      "description": "Positive net worth for each of 3 financial years",
+      "validation_type": "numeric_threshold",
+      "threshold": 0,
+      "unit": "crores",
+      "years_required": 3,
+      "calculation": "minimum",
+      "context": "Net worth must be positive (> 0) for all 3 years",
+      "criticality": "Mandatory",
+      "evidence_documents": ["CA Certificate", "Audited Balance Sheet"]
+    }},
+    {{
+      "criterion_id": "4",
+      "document_name": "Certifications (CMMI, ISO 9001, ISO 20000)",
+      "description": "SEI CMMI level 3+, ISO 9001, and ISO/IEC 20000 certifications",
+      "validation_type": "multi_condition",
+      "conditions": ["SEI CMMI Level 3 or above", "ISO 9001", "ISO/IEC 20000"],
+      "logic": "AND",
+      "context": "All certifications must be valid at time of submission",
+      "criticality": "Mandatory",
+      "evidence_documents": ["CMMI Certificate", "ISO 9001 Certificate", "ISO 20000 Certificate"]
+    }},
+    {{
+      "criterion_id": "5",
+      "document_name": "Employee Count Summary",
+      "description": "At least 100 professionals on payroll",
+      "validation_type": "count_threshold",
+      "threshold": 100,
+      "unit": "employees",
+      "context": "Summary of employee count duly certified by HR",
+      "criticality": "Mandatory",
+      "evidence_documents": ["HR Employee Count Summary", "Payroll Summary"]
     }}
   ]
 }}
 
-## CRITICALITY RULES:
-- "Mandatory": Terms like 'shall', 'must', 'essential', 'eligibility criteria'.
-- "Important": Terms like 'should', 'highly recommended'.
-- "Optional": Terms like 'if applicable', 'where available'.
+CRITICAL RULES:
+- Extract threshold VALUES (numbers only, no text)
+- Specify calculation method: "average", "sum", "minimum", "maximum", "age_from_incorporation"
+- For multi_condition, list ALL sub-requirements in conditions array
+- Set criticality: "Mandatory" or "Important" based on RFP language
+- Keep document_name concise (< 100 chars)
+- Keep description clear and actionable
 
-*Other rules*:
-- Return ONLY the JSON object
-- No explanations before or after
-- Each item must be a DOCUMENT NAME (noun phrase)
-- Maximum 150 characters per document name
+Return ONLY the JSON object, no markdown formatting, no explanations.
 """
         
         return prompt
@@ -576,91 +652,71 @@ Return valid JSON with this structure:
         
         return has_keyword or has_pattern
     
-    def _validate_and_clean_documents(self, documents: List[Union[str,Dict]]) -> List[Dict]:
+    def _validate_and_clean_documents(self, requirements: List[Union[str, Dict]]) -> List[Dict]:
         """
-        Universal validator that works across different RFP formats
-        Uses multiple validation strategies
+        Enhanced validation for structured requirements
         """
         validated = []
-        # RULE 1: Banned Triggers - if a string contains these, it's likely a clause, not a doc
-        banned_phrases = [
-            "shall be", "will be", "must be", "should be", 
-            "responsible for", "liable for", "subject to", 
-            "discrepancy between", "in case of", "event of", 
-            "reserves the right", "termination of", "execution of",
-            "during the execution", "period of contract", "time of billing",
-            "documents to be submitted", "list of documents",
-            "liquidated damages", "penalty @", "payment shall",
-            "contractor shall", "bidder shall", "service provider shall"
+        
+        for item in requirements:
+            if not isinstance(item, dict):
+                # Legacy format - convert to simple document_existence
+                item = {
+                    'document_name': str(item),
+                    'validation_type': 'document_existence',
+                    'criticality': 'Mandatory'
+                }
+            
+            # Ensure required fields
+            if 'document_name' not in item or not item['document_name']:
+                continue
+            
+            doc_name = str(item['document_name']).strip()
+            
+            # Skip if too short or has banned phrases
+            if len(doc_name) < 5 or len(doc_name) > 200:
+                continue
+            
+            banned_phrases = [
+                'shall be', 'will be', 'must be', 'should be', 
+                'responsible for', 'in case of', 'reserves the right'
             ]
             
-        # RULE 2: Must contain at least one document-type keyword
-        valid_indicators = [
-            'certificate', 'cert', 'form', 'letter', 'document', 'doc',
-            'statement', 'report', 'proof', 'copy', 'copies','photocopy',
-            'cv', 'resume', 'agreement', 'deed', 'license', 'licence',
-            'permit', 'authorization', 'clearance', 'registration','appendix',
-            'pan', 'gst', 'tin', 'vat', 'emd', 'annexure', 'format',
-            'template', 'bio', 'profile', 'details', 'list','evidence',
-            'sheet', 'balance', 'turnover', 'financial', 'audit','return',
-            'completion', 'work order', 'contract', 'undertaking','order',
-            'affidavit', 'declaration', 'testimonial', 'reference','proforma',
-            'biodata', 'plan', 'esi', 'epf', 'emd', 'fdr', 'power of attorney"'
-            ]
-
-        seen_names = set()
+            if any(phrase in doc_name.lower() for phrase in banned_phrases):
+                continue
             
-        for item in documents:
-            # --- NORMALIZATION (The Fix for the Error) ---
-            # Check if item is a Dictionary (New Format) or String (Old Format)
-            if isinstance(item, dict):
-                doc_name = item.get('document_name', '')
-                # Handle case where LLM returns None or non-string for name
-                if not isinstance(doc_name, str):
-                    doc_name = str(doc_name) if doc_name else ""
+            # Ensure validation_type is set
+            if 'validation_type' not in item:
+                # Infer from description or name
+                desc = item.get('description', doc_name).lower()
                 
-                criticality = item.get('criticality', 'Mandatory')
-                context = item.get('context', '')
-            else:
-                # Handle String (Legacy/Fallback)
-                doc_name = str(item)
-                criticality = "Unknown"
-                context = ""
-
-            # Clean the name (Now safe because doc_name is guaranteed to be a string)
-            doc_name_clean = doc_name.strip().strip('.,;-:')
-            doc_lower = doc_name_clean.lower()
-
-            # --- FILTER 1: Length Checks ---
-            if len(doc_name_clean.split()) > 15: # Too long = sentence
-                continue
-            if len(doc_name_clean) < 3: # Too short = noise
-                continue
-
-            # --- FILTER 2: Banned Phrases ---
-            if any(phrase in doc_lower for phrase in banned_phrases):
-                continue
-
-            # --- FILTER 3: Must look like a document ---
-            has_indicator = any(ind in doc_lower for ind in valid_indicators)
-            is_special = any(x in doc_lower for x in ['iso', 'bis', 'itr', 'net worth'])
+                if any(word in desc for word in ['turnover', 'revenue', 'net worth', 'value', 'crores', 'lakhs']):
+                    item['validation_type'] = 'numeric_threshold'
+                elif any(word in desc for word in ['valid', 'expiry', 'expire', 'certification', 'certificate']):
+                    item['validation_type'] = 'date_validity'
+                elif any(word in desc for word in ['at least', 'minimum', 'employees', 'professionals', 'count']):
+                    item['validation_type'] = 'count_threshold'
+                elif 'and' in desc or 'or' in desc:
+                    item['validation_type'] = 'multi_condition'
+                else:
+                    item['validation_type'] = 'document_existence'
             
-            if not (has_indicator or is_special):
-                # If it doesn't look like a document, only allow if it's short
-                if len(doc_name_clean.split()) > 6:
-                    continue
-
-            # --- FILTER 4: Deduplication ---
-            if doc_lower in seen_names:
-                continue
+            # Set defaults
+            if 'criticality' not in item:
+                item['criticality'] = 'Mandatory'
             
-            seen_names.add(doc_lower)
+            if 'context' not in item:
+                item['context'] = item.get('description', '')
             
-            # Add to validated list
-            validated.append({
-                "document_name": doc_name_clean,
-                "criticality": criticality,
-                "context": context
-            })
-            
-        return validated
+            validated.append(item)
+        
+        # Deduplicate by document_name
+        seen = set()
+        deduplicated = []
+        for item in validated:
+            key = item['document_name'].lower().strip()
+            if key not in seen:
+                seen.add(key)
+                deduplicated.append(item)
+        
+        return deduplicated
