@@ -22,8 +22,7 @@ paddlepaddle
 pdfplumber
 python-docx  # Word documents
 markdown  # Markdown files
-python-pptx  # PowerPoint (optional)
-openpyxl  # Excel (optional)
+openpyxl  # Excel 
 pypandoc  # Universal document converter
 PyPDF2 
 
@@ -61,6 +60,7 @@ tiktoken
 redis
 aiofiles
 asyncpg
-
+psutil
 beautifulsoup4
 chardet
+rapidfuzz

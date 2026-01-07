@@ -39,6 +39,7 @@ class DocumentMatch(BaseModel):
     matched_file: Optional[str] = "N/A"
     confidence_score: Optional[float] = None
     details: Optional[str] = None
+    description: Optional[str] = ""
 
 class AnalysisResult(BaseModel):
     total: int
@@ -76,6 +77,35 @@ class AnalysisHistoryDetail(AnalysisHistoryItem):
             import json
             return json.loads(self.results_json)
         return None
+    
+class RFPAnalysisResult(BaseModel):
+    """Results for a single RFP"""
+    rfp_filename: str
+    total: int
+    present: int
+    review: int
+    missing: int
+    completion_rate: float
+    matches: List[DocumentMatch]
+    extraction_cost: float
+
+class BatchAnalysisResult(BaseModel):
+    """Results for multiple RFPs analyzed together"""
+    batch_id: str
+    total_rfps: int
+    total_cost: float
+    rfp_results: List[RFPAnalysisResult]
+    
+class BatchAnalysisHistoryItem(BaseModel):
+    """History item for batch analysis"""
+    id: int
+    batch_id: str
+    num_rfps: int
+    total_api_cost: float
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
 
 class HealthCheck(BaseModel):
     status: str

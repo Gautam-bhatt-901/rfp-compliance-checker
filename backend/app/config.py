@@ -83,7 +83,7 @@ LLM_PROVIDER = 'auto'
 
 # OpenAI Settings
 OPENAI_MODEL = 'gpt-4o'
-OPENAI_TEMPERATURE = 0.0
+OPENAI_TEMPERATURE = 0.3
 OPENAI_MAX_TOKENS = 6000
 OPENAI_TIMEOUT = 60
 
@@ -211,3 +211,39 @@ DATE_VALIDATION_BUFFER_DAYS = int(os.getenv('DATE_VALIDATION_BUFFER_DAYS', '0'))
 COUNT_VALIDATION_STRICT = os.getenv('COUNT_VALIDATION_STRICT', 'true').lower() == 'true'
 
 print(f"✓ Structured Validation: {'ENABLED' if ENABLE_STRUCTURED_VALIDATION else 'DISABLED'}")
+
+# ============ PERFORMANCE OPTIMIZATION SETTINGS ============
+
+# Optimization #1: Background Tasks & Async I/O
+ENABLE_BACKGROUND_PROCESSING = os.getenv('ENABLE_BACKGROUND_PROCESSING', 'true').lower() == 'true'
+JOB_TIMEOUT_SECONDS = int(os.getenv('JOB_TIMEOUT_SECONDS', '600'))  # 10 minutes
+JOB_STATUS_CACHE_TTL = int(os.getenv('JOB_STATUS_CACHE_TTL', '3600'))  # 1 hour
+
+# Optimization #2: Parallel Processing
+ENABLE_PARALLEL_PROCESSING = os.getenv('ENABLE_PARALLEL_PROCESSING', 'true').lower() == 'true'
+MAX_WORKER_PROCESSES = int(os.getenv('MAX_WORKER_PROCESSES', '0'))  # 0 = auto-detect
+MIN_FILES_FOR_PARALLEL = int(os.getenv('MIN_FILES_FOR_PARALLEL', '3'))  # Parallel only if 3+ files
+
+# Optimization #3: Large File Handling
+MAX_PDF_SIZE_MB = int(os.getenv('MAX_PDF_SIZE_MB', '100'))  # Maximum PDF size
+PDF_CHUNK_SIZE_PAGES = int(os.getenv('PDF_CHUNK_SIZE_PAGES', '20'))  # Process 20 pages at a time
+ENABLE_CHUNKED_PROCESSING = os.getenv('ENABLE_CHUNKED_PROCESSING', 'true').lower() == 'true'
+OCR_SELECTIVE_MODE = os.getenv('OCR_SELECTIVE_MODE', 'true').lower() == 'true'  # Only OCR low-text pages
+OCR_DPI = int(os.getenv('OCR_DPI', '150'))  # Lower DPI for speed
+MEMORY_LIMIT_MB = int(os.getenv('MEMORY_LIMIT_MB', '1024'))  # Memory limit per process
+
+# Optimization #4: Caching
+ENABLE_CACHE = os.getenv('ENABLE_CACHE', 'true').lower() == 'true'
+CACHE_BACKEND = os.getenv('CACHE_BACKEND', 'memory')  # 'memory' or 'redis'
+CACHE_MAX_SIZE = int(os.getenv('CACHE_MAX_SIZE', '100'))  # Max items in memory cache
+CACHE_TTL_SECONDS = int(os.getenv('CACHE_TTL_SECONDS', '3600'))  # 1 hour TTL
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+REDIS_DB = int(os.getenv('REDIS_DB', '0'))
+REDIS_PASSWORD = os.getenv('REDIS_PASSWORD', None)
+
+# File Upload Security
+ALLOWED_MIME_TYPES = ['application/pdf', 'application/msword', 
+                      'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+SANITIZE_FILENAMES = True
+MAX_CONCURRENT_UPLOADS = int(os.getenv('MAX_CONCURRENT_UPLOADS', '10'))

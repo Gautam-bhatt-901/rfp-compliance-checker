@@ -30,6 +30,7 @@ class AnalysisHistory(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    batch_id = Column(String(50), nullable=True, index=True)
     rfp_filename = Column(String(500), nullable=False)
     num_provided_docs = Column(Integer, nullable=False)
     num_required_docs = Column(Integer, nullable=False)

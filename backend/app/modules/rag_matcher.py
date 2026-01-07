@@ -641,6 +641,7 @@ class RAGMatcher:
 
             return {
                 'Required Document': req_name,
+                'Description': req_context,
                 'Status': status,
                 'Matched File': data.get('matched_file') or "N/A",
                 'Confidence Score': f"{score:.2f}",
@@ -676,6 +677,7 @@ class RAGMatcher:
 
         return {
             'Required Document': req_name,
+            'Description': req_context,
             'Status': status,
             'Matched File': chunk.source_filename if status != config.STATUS_MISSING else "N/A",
             'Confidence Score': f"{score:.2f}",
@@ -686,6 +688,7 @@ class RAGMatcher:
     def _create_missing_result(self, name, context, criticality, reason="No match found"):
         return {
             'Required Document': name,
+            'Description': context,
             'Status': config.STATUS_MISSING,
             'Matched File': 'N/A',
             'Confidence Score': '0.00',
@@ -699,9 +702,9 @@ class RAGMatcher:
     def _convert_validation_to_result(
         self, 
         validation: Dict, 
-        reqname: str, 
-        reqcontext: str, 
-        reqcriticality: str,
+        req_name: str, 
+        req_context: str, 
+        req_criticality: str,
         chunk_filenames: List[str]
     ) -> Dict:
         """
@@ -740,10 +743,11 @@ class RAGMatcher:
             matched_file = 'N/A'
 
         return {
-            'Required Document': reqname,
+            'Required Document': req_name,
+            'Description': req_context,
             'Status': status,
             'Matched File': matched_file,
             'Confidence Score': f"{confidence:.2f}",
             'Reasoning': reasoning,
-            'Criticality': reqcriticality
+            'Criticality': req_criticality
         }

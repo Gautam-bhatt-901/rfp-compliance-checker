@@ -12,7 +12,7 @@ from app.models import User
 from app.modules.utils import validate_file_extension
 from app import config
 
-router = APIRouter()
+router = APIRouter(prefix="/api/files", tags=["Files"])
 
 @router.post("/upload/rfp")
 async def upload_rfp(
