@@ -55,16 +55,20 @@ export default function AnalysisDetailPage() {
   };
 
   const downloadCSV = () => {
-    if (!analysis || !analysis.results_json) return;
+    if (!analysis || !analysis.results_json || !analysis.resultsjson.matches) return;
     
-    const headers = ['Required Document', 'Status', 'Matched File'];
-    const rows = analysis.results_json.matches.map(m => [
-      m.required_document,
-      m.status,
-      m.matched_file
-    ]);
+    const headers = ["Required Document", "Description", "Status", "Matched File"];
+    const rows = analysis.results_json.matches.map(m => {
+      const description = (m.description || "").replace(/"/g, '""');
+      return [
+        `"${m.required_document}"`,
+        `"${description}"`,
+        `"${m.status}"`,
+        `"${m.matched_file}"`
+      ];
+    });
     
-    const csv = [headers, ...rows].map(row => row.join(',')).join('\n');
+    const csv = [headers.map(h => `"${h}"`).join(","), ...rows.map(row => row.join(","))].join("\n");
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -186,23 +190,33 @@ export default function AnalysisDetailPage() {
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell><strong>Required Document</strong></TableCell>
-                  <TableCell align="center"><strong>Status</strong></TableCell>
-                  <TableCell><strong>Matched File</strong></TableCell>
+                  <TableCell width="25%"><strong>Required Document</strong></TableCell>
+                  <TableCell width="30%"><strong>Description</strong></TableCell>
+                  <TableCell width="15%"><strong>Status</strong></TableCell>
+                  <TableCell width="20%"><strong>Matched File</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {analysis.results_json.matches.map((match, index) => (
-                  <TableRow key={index} hover>
-                    <TableCell>{match.required_document}</TableCell>
-                    <TableCell align="center">
-                      <Chip
-                        label={match.status}
-                        color={getStatusColor(match.status)}
-                        size="small"
-                      />
+                {analysis.results_json.matches.map((match, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>
+                      <Typography variant="body2" fontWeight="medium">
+                        {match.required_document}
+                      </Typography>
                     </TableCell>
-                    <TableCell>{match.matched_file}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem', lineHeight: 1.5 }}>
+                        {match.description || "No description available"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={match.status} color={getStatusColor(match.status)} size="small" />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {match.matched_file}
+                      </Typography>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

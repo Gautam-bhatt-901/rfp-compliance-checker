@@ -67,9 +67,12 @@ export const authAPI = {
 
 // RFP Analysis API
 export const rfpAPI = {
-  analyzeCompliance: async (rfpFile, providedFiles, onProgress) => {
+  analyzeCompliance: async (rfpFiles, providedFiles, onProgress) => {
     const formData = new FormData();
-    formData.append('rfp_file', rfpFile);
+
+    rfpFiles.forEach((file) => {
+      formData.append('rfp_files', file);
+    });
     
     providedFiles.forEach((file) => {
       formData.append('provided_files', file);
@@ -85,12 +88,17 @@ export const rfpAPI = {
     return response.data;
   },
   
-  // NEW: History endpoints
+  // History endpoints
   getHistory: async () => {
     const response = await api.get('/rfp/history');
     return response.data;
   },
   
+  getBatchAnalysis: async (batchId) => {
+    const response = await api.get(`/rfp/history/batch/${batchId}`);
+    return response.data;
+  },
+
   getAnalysisDetail: async (id) => {
     const response = await api.get(`/rfp/history/${id}`);
     return response.data;

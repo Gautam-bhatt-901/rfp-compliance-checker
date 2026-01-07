@@ -12,6 +12,8 @@ from anthropic import Anthropic
 from app import config
 import numpy as np
 
+from app.modules.pdf_extractor import PDFExtractor 
+
 class ListExtractor:
     """
     Extracts required document lists from RFP text with LLM-first approach:
@@ -33,9 +35,9 @@ class ListExtractor:
                 self.openai_client = OpenAI(api_key=config.OPENAI_API_KEY)
                 self.active_provider = 'openai'
                 self.llm_available = True
-                print("✓ OpenAI GPT-4 client initialized")
+                print("[OK] OpenAI GPT-4 client initialized")
             except Exception as e:
-                print(f"⚠️ OpenAI initialization failed: {e}")
+                print(f"[WARNING] OpenAI initialization failed: {e}")
         
         # Try Anthropic if OpenAI not available
         if not self.llm_available and config.ANTHROPIC_API_KEY:
@@ -43,9 +45,9 @@ class ListExtractor:
                 self.anthropic_client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
                 self.active_provider = 'anthropic'
                 self.llm_available = True
-                print("✓ Anthropic Claude client initialized")
+                print("[OK] Anthropic Claude client initialized")
             except Exception as e:
-                print(f"⚠️ Anthropic initialization failed: {e}")
+                print(f"[WARNING] Anthropic initialization failed: {e}")
         
         # Lazy loading for spaCy (only load if LLM fails)
         self.nlp = None
@@ -53,7 +55,7 @@ class ListExtractor:
         self.spacy_loaded = False
         
         if not self.llm_available:
-            print("⚠️ No API LLM available. Will use spaCy fallback.")
+            print("[WARNING] No API LLM available. Will use spaCy fallback.")
             self._initialize_spacy()
     
     def _initialize_spacy(self):
@@ -80,9 +82,9 @@ class ListExtractor:
             self.phrase_matcher.add("DOCUMENT_KEYWORDS", patterns)
             
             self.spacy_loaded = True
-            print("✓ spaCy model loaded successfully")
+            print("[OK] spaCy model loaded successfully")
         except Exception as e:
-            print(f"❌ spaCy initialization failed: {e}")
+            print(f"[FAIL] spaCy initialization failed: {e}")
             raise
     
     def extract_required_documents(self, rfp_text_or_pages: Union[str, Dict[int, str]]) -> List[str]:
@@ -106,17 +108,17 @@ class ListExtractor:
             final_context_text = self._scout_relevant_sections(rfp_text_or_pages)
         else:
             # Input is string (legacy), fallback to truncation but warn
-            print("⚠️ Warning: Non-paginated input received. Using truncation.")
+            print("[WARNING] Warning: Non-paginated input received. Using truncation.")
             final_context_text = rfp_text_or_pages[:config.MAX_INPUT_TOKENS * 4]
 
         # STAGE 2: Try API LLM extraction
         if self.llm_available:
             print(f"\n🤖 STAGE 1: API LLM extraction ({self.active_provider.upper()})...")
             try:
-                llm_results = self._extract_with_llm(final_context_text, [])
+                llm_results = self.extract_with_llm(final_context_text, [])
                 
                 if llm_results and len(llm_results) >= 3:
-                    print(f" ✓ LLM extraction successful: {len(llm_results)} documents found")
+                    print(f" [OK] LLM extraction successful: {len(llm_results)} documents found")
                     
                     # Show cost
                     if self.extraction_cost > 0:
@@ -125,13 +127,13 @@ class ListExtractor:
                     print("="*70 + "\n")
                     return llm_results
                 else:
-                    print(f" ⚠️ LLM returned insufficient results ({len(llm_results)} docs)")
+                    print(f" [WARNING] LLM returned insufficient results ({len(llm_results)} docs)")
                     print(" → Falling back to spaCy...")       
             except Exception as e:
-                print(f" ❌ LLM extraction failed: {e}")
+                print(f" [FAIL] LLM extraction failed: {e}")
                 print(" → Falling back to spaCy...")
         else:
-            print("\n⚠️ No API LLM available, using spaCy extraction...")
+            print("\n[WARNING] No API LLM available, using spaCy extraction...")
         
         # STAGE 3: spaCy fallback (ONLY IF LLM FAILS)
         print(f"\n🔍 STAGE 2: spaCy fallback extraction...")
@@ -146,7 +148,7 @@ class ListExtractor:
         
         return spacy_results
     
-    def _scout_relevant_sections(self, pages: Dict[int, str]) -> str:
+    def _scout_relevant_sections(self, pages: Dict[int, str], pdf_path: str = None) -> str:
         """
         The 'Scout' Algorithm:
         Identifies and merges the most relevant parts of the RFP.
@@ -160,9 +162,10 @@ class ListExtractor:
         # --- Configuration ---
         # Keywords that signal a requirements section
         hot_keywords = [
-            'checklist', 'annexure', 'appendix', 'submission', 'mandatory', 
-            'eligibility', 'qualification', 'enclosure', 'documents required', 
-            'technical bid', 'financial bid', 'format'
+            'checklist', 'annexure', 'appendix', 'submission', 'mandatory', 'criteria',
+            'eligibility', 'eligibility requirement','qualification', 'enclosure', 'documents required', 
+            'technical bid', 'financial bid', 'format', 'required documents', 'technical qualification'
+            'documentary evidence', 'undertaking', 'certificate', 'proof', 'supporting documents'
         ]
         
         # --- Scoring ---
@@ -173,176 +176,313 @@ class ListExtractor:
             
             # Keyword density scoring
             for kw in hot_keywords:
-                count = text_lower.count(kw)
-                score += count * 2  # Base weight
-                
-                # Boost for headers (simple heuristic: keyword followed by newline or colon)
-                if f"{kw}:" in text_lower or f"{kw}\n" in text_lower:
-                    score += 5
+                if kw in text_lower:
+                    score += 2
+            # Boost for headers
+            if "eligibility criteria" in text_lower or "qualification criteria" in text_lower:
+                score += 10 # High boost for explicit criteria pages
             
             page_scores[p_num] = score
+
+        # --- OPTIMIZATION: Table Sniper ---
+        # If we have the PDF path, let's re-extract tables from the "hottest" pages
+        if pdf_path:
+            # Find pages that likely have eligibility tables (Score > 5)
+            hot_pages = [p for p, s in page_scores.items() if s >= 6]
+            
+            if hot_pages:
+                print(f"🎯 Table Sniper: Targeting {len(hot_pages)} high-value pages for improved table extraction...")
+                extractor = PDFExtractor()
+                # Run pdfplumber ONLY on these specific pages
+                table_data = extractor.extract_table_text_from_pages(pdf_path, hot_pages)
+                
+                # Merge the good table data back into our text context
+                for p_num, table_text in table_data.items():
+                    print(f"   [OK] Injected structured table into Page {p_num}")
+                    # We append the table at the top of the page text so LLM sees it first
+                    pages[p_num] = table_text + "\n\n" + pages[p_num]
 
         # --- Selection Strategy ---
         selected_indices = set()
         
-        # 1. Always include First 3 pages (Introduction / TOC)
-        for i in range(1, min(4, total_pages + 1)):
-            selected_indices.add(i)
+        # DYNAMIC SELECTION BASED ON DOCUMENT SIZE
+        if total_pages <= 30:
+            top_scorers_count = max(10, total_pages - 10)
+        elif total_pages <= 100:
+            top_scorers_count = 20
+        else:
+            top_scorers_count = 40
             
-        # 2. Always include Last 3 pages (Often Checklists/Annexures)
-        for i in range(max(1, total_pages - 2), total_pages + 1):
-            selected_indices.add(i)
-            
-        # 3. Select Top N Scoring Pages from the middle
-        # Filter out pages we already selected
         remaining_pages = [p for p in page_scores.keys() if p not in selected_indices]
-        
-        # Sort remaining by score
         sorted_pages = sorted(remaining_pages, key=lambda x: page_scores[x], reverse=True)
+        selected_indices.update(sorted_pages[:top_scorers_count])
         
-        # Take top 5 highest scoring pages
-        top_scorers = sorted_pages[:5]
-        selected_indices.update(top_scorers)
-        
-        # --- Context Expansion ---
-        # If we picked page 50, page 51 might continue the list. 
-        # Add neighbors for high scoring pages.
-        neighbors = set()
-        for p in top_scorers:
-            if p + 1 <= total_pages: neighbors.add(p + 1)
-            if p - 1 >= 1: neighbors.add(p - 1)
-        
-        selected_indices.update(neighbors)
-
-        # --- Synthesis ---
-        # Sort indices to maintain document flow
+        # Sort and merge final text
         final_indices = sorted(list(selected_indices))
-        
-        print(f"✓ Selected {len(final_indices)} relevant pages: {final_indices}")
-        
-        # Construct the final text with markers
-        combined_text = ""
-        for p in final_indices:
-            combined_text += f"\n--- [PAGE {p}] ---\n"
-            combined_text += pages[p]
+        final_context_parts = []
+        for i in final_indices:
+            final_context_parts.append(f"--- PAGE {i} ---")
+            final_context_parts.append(pages[i])
             
-        return combined_text
+        return "\n\n".join(final_context_parts)
     
-    def _extract_with_llm(
-        self,
-        rfp_text: str,
-        spacy_candidates: List[str]
-    ) -> List[Dict]:
+    def extract_with_llm(self, rfp_text: str, spacy_candidates: List[str]) -> List[Dict]:
         """
-        Universal LLM extraction with validation
-        Works across different RFP formats
+        Enhanced LLM extraction with structured requirement parsing
+        Extracts validation rules, not just document names
         """
         
-        # Truncate text if too long
-        max_chars = config.MAX_INPUT_TOKENS * 3  # Rough estimate
+        max_chars = config.MAX_INPUT_TOKENS * 5
         if len(rfp_text) > max_chars:
-            print(f" ℹ️ Truncating RFP text from {len(rfp_text)} to {max_chars} chars")
+            print(f"  ⚠ Truncating RFP text from {len(rfp_text)} to {max_chars} chars")
             rfp_text = rfp_text[:max_chars]
         
-        # Build universal prompt
-        prompt = self._build_extraction_prompt(rfp_text, spacy_candidates)
+        # Build enhanced prompt with validation rules
+        prompt = self._build_extraction_prompt(rfp_text)
         
-        # Get raw extraction from LLM
+        # Get LLM response
         raw_documents = []
-        if self.active_provider == 'openai':
+        if self.active_provider == "openai":
             raw_documents = self._extract_with_openai(prompt)
-        elif self.active_provider == 'anthropic':
+        elif self.active_provider == "anthropic":
             raw_documents = self._extract_with_anthropic(prompt)
         else:
             return []
         
-        print(f" → Raw LLM extraction: {len(raw_documents)} items")
+        print(f"  → Raw LLM extraction: {len(raw_documents)} items")
         
-        # Apply universal validation
+        # Validate and clean
         validated_documents = self._validate_and_clean_documents(raw_documents)
-        print(f" → After validation: {len(validated_documents)} valid documents")
         
-        # If validation removed too many, try with lower temperature
-        if len(validated_documents) < 3 and len(raw_documents) > 5:
-            print(f" ⚠️ Warning: Heavy filtering detected. Check RFP format.")
+        print(f"  → After validation: {len(validated_documents)} valid requirements")
         
         return validated_documents
     
-    def _build_extraction_prompt(self, rfp_text: str, spacy_candidates: List[str]) -> str:
+    def _build_extraction_prompt(self, rfp_text: str, spacy_candidates: List[str] = None) -> str:
         """
-        Universal extraction prompt that works across different RFP formats
-        Uses two-stage thinking: identify → validate
+        Enhanced prompt that extracts structured requirements with validation rules
         """
+        
+        prompt = f"""You are an expert RFP compliance analyst extracting ALL compliance requirements from the provided RFP document.
 
-        prompt = f"""You are an expert RFP document analyst. Your task is to extract a comprehensive list of REQUIRED DOCUMENTS that a bidder must submit.
 
-## CORE DEFINITION:
-A **SUBMITTABLE DOCUMENT** is something tangible that:
-- Can be physically or digitally attached/submitted
-- Has a clear document type (certificate, form, letter, statement, etc.)
-- Can be identified by a noun phrase (not a sentence or instruction)
-- Would appear in a document checklist
- 
-## UNIVERSAL EXTRACTION RULES (Work for ANY RFP format):
- 
-### ✅ EXTRACT (Document Names):
-- Certificates: "Tax Clearance Certificate", "ISO Certification"
-- Forms: "Bid Security Form", "Technical Proposal Form"
-- Copies: "Copy of Registration", "Photocopy of PAN Card"
-- Statements: "Audited Financial Statement", "Bank Statement"
-- Letters: "Letter of Intent", "Experience Letter"
-- Reports: "Annual Report", "Audit Report"
-- Proofs: "Proof of turnover", "Address Proof"
-- CVs/Resumes: "CV of Project Manager", "Resume with experience"
-- Agreements: "Partnership Deed", "Contract Agreement"
-- Licenses: "Business License", "Trade License"
- 
-### ❌ DO NOT EXTRACT (Not Documents):
-- **Instructions**: "The bidder shall submit", "Firm should provide"
-- **Criteria**: "Average turnover should be", "Experience of 5 years"
-- **Process descriptions**: "Technical evaluation will be done"
-- **Section headers only**: "Eligibility Criteria" (unless followed by specific doc)
-- **Incomplete phrases**: "Position K-1 (Partner" (missing the document part)
-- **List markers alone**: "a)", "1.", "ii)"
-- **Generic phrases**: "supporting documents", "relevant papers"
-- **Evaluation text**: "Marks will be awarded for"
- 
-## DECISION FRAMEWORK:
-For each potential item, ask:
-1. **Is this a NOUN PHRASE?** (Yes = might be document, No = reject)
-2. **Can this be PHYSICALLY SUBMITTED?** (Yes = might be document, No = reject)
-3. **Does it NAME a specific document TYPE?** (Yes = extract, No = reject)
-4. **Is it COMPLETE?** (Yes = extract, No = reject)
- 
-## YOUR TASK:
-Read this RFP carefully. Extract ONLY the names of submittable documents.
- 
-**RFP TEXT:**
-{rfp_text}
+PRIMARY OBJECTIVE
 
-## OUTPUT FORMAT:
-Return valid JSON with this structure:
+Extract EVERY compliance requirement, eligibility criterion, and mandatory document mentioned in the RFP text.
+Your goal: COMPLETENESS first, then add detail.
+
+IMPORTANT: Do NOT skip requirements just because you're uncertain about details.
+Better to extract with minimal info than to miss a requirement entirely.
+
+WHAT TO EXTRACT
+
+Extract if the RFP mentions:
+ Financial requirements (turnover, net worth, revenue)
+ Experience requirements (years in business, project count)
+ Certifications and licenses (ISO, CMMI, industry-specific)
+ Registration documents (company registration, tax registrations)
+ Workforce requirements (employee count, technical staff)
+ Legal documents (PAN, GST, incorporation certificates)
+ Project references and work orders
+ Technical qualifications and accreditations
+ Any document explicitly listed in "documents to be submitted" sections
+
+
+REQUIREMENT CATEGORIZATION
+
+Classify each requirement by validation_type:
+
+1. numeric_threshold - Has specific number/amount
+   Examples: "turnover ≥ ₹50 Cr", "net worth > 0", "5+ years experience"
+2. date_validity - Time-based or expiry checking
+   Examples: "valid certification", "license not expired", "current as of bid date"
+3. count_threshold - Counting items/resources
+   Examples: "minimum 100 employees", "at least 10 projects", "5+ engineers"
+4. multi_condition - Multiple requirements together (AND/OR)
+   Examples: "ISO 9001 AND ISO 27001", "CMMI Level 3 OR equivalent"
+5. document_existence - Simple document submission
+   Examples: "PAN copy", "GST certificate", "registration document"
+
+DOCUMENT NAME EXTRACTION
+
+PRIORITY ORDER for naming:
+1st: Use EXACT phrase from RFP if clear
+   RFP says "Chartered Accountant Certificate" → Use exactly that
+2nd: Use commonly recognized term if RFP uses abbreviations
+   RFP says "CA cert" → Expand to "Chartered Accountant Certificate"
+3rd: Create descriptive name that captures the requirement
+   RFP says "proof of turnover" → "Annual Turnover Certificate"
+
+GUIDANCE:
+- Preserve RFP terminology when specific
+- Expand abbreviations for clarity
+- Make names descriptive enough to understand requirement
+- Keep concise (under 100 characters)
+
+DESCRIPTION GUIDELINES
+
+Aim for 50-150 words including:
+
+MUST HAVE (if mentioned in RFP):
+ What is being verified
+ Specific thresholds or criteria
+ Time periods or validity requirements
+ How to calculate/verify
+
+NICE TO HAVE (if mentioned):
+ Special conditions or exclusions
+ Acceptable evidence document types
+ Issuing authority requirements
+
+If RFP provides minimal detail, write what you know (even if brief).
+If RFP provides extensive detail, capture the key points comprehensively.
+
+
+VERBATIM QUOTE (OPTIONAL)
+
+Include verbatim_quote when possible:
+- Helps prove the requirement exists
+- Provides context for validation
+- Useful for traceability
+
+If you can find an exact phrase from the RFP that describes this requirement, include it.
+If the requirement is implied or synthesized from multiple places, you may leave it empty.
+
+
+OUTPUT FORMAT
+Return a JSON object with this structure:
+
 {{
   "required_documents": [
     {{
-      "document_name": "Exact Document Name",
-      "category": "Legal|Financial|Technical|Other",
-      "criticality": "Mandatory|Important|Optional",
-      "context": "Brief quote from RFP defining this requirement"
+      "criterion_id": "1",
+      "document_name": "Name extracted from RFP",
+      "description": "Comprehensive description 50-150 words",
+      "validation_type": "numeric_threshold|date_validity|count_threshold|multi_condition|document_existence",
+      "threshold": 50.0,
+      "unit": "crores",
+      "years_required": 3,
+      "calculation": "average",
+      "conditions": [],
+      "logic": null,
+      "context": "Additional notes",
+      "criticality": "Mandatory",
+      "evidence_documents": ["Doc type 1", "Doc type 2"],
+      "verbatim_quote": "Exact text from RFP or empty string if not available"
     }}
   ]
 }}
 
-## CRITICALITY RULES:
-- "Mandatory": Terms like 'shall', 'must', 'essential', 'eligibility criteria'.
-- "Important": Terms like 'should', 'highly recommended'.
-- "Optional": Terms like 'if applicable', 'where available'.
+FIELD REQUIREMENTS:
+- criterion_id: Sequential number (required)
+- document_name: Short descriptive name (required)
+- description: Detailed explanation (required, aim for 50+ words)
+- validation_type: One of the 5 types above (required)
+- threshold: Numeric value if applicable (null otherwise)
+- unit: Unit of measurement if applicable (null otherwise)
+- years_required: Number of years if applicable (null otherwise)
+- calculation: "average"|"sum"|"minimum"|"maximum"|"age_from_incorporation"|null
+- conditions: Array of conditions for multi_condition type (empty array otherwise)
+- logic: "AND"|"OR" for multi_condition (null otherwise)
+- context: Additional clarifications (can be empty string)
+- criticality: "Mandatory"|"Important" based on RFP language
+- evidence_documents: Array of acceptable document types (can be empty)
+- verbatim_quote: Exact RFP text or empty string (optional but recommended)
 
-*Other rules*:
-- Return ONLY the JSON object
-- No explanations before or after
-- Each item must be a DOCUMENT NAME (noun phrase)
-- Maximum 150 characters per document name
+EXAMPLES (Reference Only)
+
+Example 1 - Financial Requirement:
+{{
+  "criterion_id": "1",
+  "document_name": "Annual Revenue Certificate from Statutory Auditor",
+  "description": "The bidding organization must demonstrate average annual revenue of at least ₹100 crores over the last three completed financial years (2021-22, 2022-23, 2023-24). Revenue should be calculated as the arithmetic mean across all three years. Certificate must be issued by a practicing Chartered Accountant registered with ICAI, on letterhead, with UDIN number and firm details. The certificate should specifically mention revenue from IT services or relevant business domain.",
+  "validation_type": "numeric_threshold",
+  "threshold": 100.0,
+  "unit": "crores",
+  "years_required": 3,
+  "calculation": "average",
+  "conditions": [],
+  "logic": null,
+  "context": "Revenue must be from IT services domain. CA must provide UDIN.",
+  "criticality": "Mandatory",
+  "evidence_documents": ["Chartered Accountant Certificate", "Audited Financial Statements", "ITR Acknowledgements"],
+  "verbatim_quote": "average annual turnover of INR 100 Crores during last three financial years"
+}}
+
+Example 2 - Certification with Validity:
+{{
+  "criterion_id": "2",
+  "document_name": "ISO/IEC 27001:2013 Information Security Certification",
+  "description": "Valid ISO/IEC 27001:2013 certification for Information Security Management System. Certificate must be current and valid as of the bid submission date, issued by a certification body accredited by NABCB or equivalent international accreditation forum member. Scope should cover information security management and IT services. If certificate is under surveillance or recertification, surveillance audit reports must be included.",
+  "validation_type": "date_validity",
+  "threshold": null,
+  "unit": null,
+  "years_required": null,
+  "calculation": null,
+  "conditions": [],
+  "logic": null,
+  "context": "Must be from NABCB/IAF accredited body. Scope should include IT services.",
+  "criticality": "Mandatory",
+  "evidence_documents": ["ISO 27001 Certificate"],
+  "verbatim_quote": "valid ISO/IEC 27001:2013 certification issued by NABCB accredited body"
+}}
+
+Example 3 - Simple Document:
+{{
+  "criterion_id": "3",
+  "document_name": "Permanent Account Number (PAN)",
+  "description": "Copy of Permanent Account Number (PAN) card or certificate issued by Income Tax Department for the bidding organization. PAN should be active and valid.",
+  "validation_type": "document_existence",
+  "threshold": null,
+  "unit": null,
+  "years_required": null,
+  "calculation": null,
+  "conditions": [],
+  "logic": null,
+  "context": "Organizational PAN required, not individual.",
+  "criticality": "Mandatory",
+  "evidence_documents": ["PAN Card", "PAN Certificate"],
+  "verbatim_quote": "Copy of PAN"
+}}
+
+Example 4 - Multiple Conditions:
+{{
+  "criterion_id": "4",
+  "document_name": "Quality and Maturity Certifications",
+  "description": "The bidder must possess all three certifications: ISO 9001:2015 for Quality Management, ISO/IEC 20000-1:2018 for IT Service Management, and CMMI Level 3 or higher for process maturity. All certificates must be valid as of bid submission date and issued by accredited certification bodies.",
+  "validation_type": "multi_condition",
+  "threshold": null,
+  "unit": null,
+  "years_required": null,
+  "calculation": null,
+  "conditions": ["ISO 9001:2015", "ISO/IEC 20000-1:2018", "CMMI Level 3 or above"],
+  "logic": "AND",
+  "context": "All three certifications are mandatory. Must be from accredited bodies.",
+  "criticality": "Mandatory",
+  "evidence_documents": ["ISO 9001 Certificate", "ISO 20000 Certificate", "CMMI Appraisal Certificate"],
+  "verbatim_quote": "ISO 9001:2015, ISO/IEC 20000-1:2018, and CMMI Level 3 or higher"
+}}
+
+NOTE: These examples show the structure and level of detail. Your actual extractions should reflect the specific RFP content provided below.
+
+EXTRACTION CHECKLIST
+
+Before finalizing your output, verify:
+
+ Did I extract ALL requirements mentioned? (Completeness check)
+ Did I categorize validation_type correctly for each?
+ Did I include threshold values where numbers are mentioned?
+ Did I write descriptions with sufficient detail?
+ Did I use RFP terminology in document names?
+ Did I include verbatim_quote where I found clear RFP text?
+ Did I set criticality based on RFP language (must/shall/mandatory)?
+
+
+RFP TEXT TO ANALYZE
+{rfp_text}
+
+
+RETURN YOUR JSON OUTPUT BELOW (no markdown, no expalination)           
 """
         
         return prompt
@@ -379,10 +519,10 @@ Return valid JSON with this structure:
             return documents
             
         except json.JSONDecodeError as e:
-            print(f" ⚠️ JSON parsing error: {e}")
+            print(f" [WARNING] JSON parsing error: {e}")
             return self._fallback_extraction(response.choices[0].message.content)
         except Exception as e:
-            print(f" ❌ OpenAI error: {e}")
+            print(f" [FAIL] OpenAI error: {e}")
             return []
     
     def _extract_with_anthropic(self, prompt: str) -> List[str]:
@@ -419,10 +559,10 @@ Return valid JSON with this structure:
             return documents
             
         except json.JSONDecodeError as e:
-            print(f" ⚠️ JSON parsing error: {e}")
+            print(f" [WARNING] JSON parsing error: {e}")
             return self._fallback_extraction(response_text)
         except Exception as e:
-            print(f" ❌ Claude error: {e}")
+            print(f" [FAIL] Claude error: {e}")
             return []
     
     def _fallback_extraction(self, response_text: str) -> List[str]:
@@ -576,91 +716,169 @@ Return valid JSON with this structure:
         
         return has_keyword or has_pattern
     
-    def _validate_and_clean_documents(self, documents: List[Union[str,Dict]]) -> List[Dict]:
+    def _validate_and_clean_documents(self, raw_documents: List[Dict]) -> List[Dict]:
         """
-        Universal validator that works across different RFP formats
-        Uses multiple validation strategies
+        Validate and clean extracted documents with enhanced checks.
         """
+        if not raw_documents:
+            return []
+        
         validated = []
-        # RULE 1: Banned Triggers - if a string contains these, it's likely a clause, not a doc
-        banned_phrases = [
-            "shall be", "will be", "must be", "should be", 
-            "responsible for", "liable for", "subject to", 
-            "discrepancy between", "in case of", "event of", 
-            "reserves the right", "termination of", "execution of",
-            "during the execution", "period of contract", "time of billing",
-            "documents to be submitted", "list of documents",
-            "liquidated damages", "penalty @", "payment shall",
-            "contractor shall", "bidder shall", "service provider shall"
-            ]
-            
-        # RULE 2: Must contain at least one document-type keyword
-        valid_indicators = [
-            'certificate', 'cert', 'form', 'letter', 'document', 'doc',
-            'statement', 'report', 'proof', 'copy', 'copies','photocopy',
-            'cv', 'resume', 'agreement', 'deed', 'license', 'licence',
-            'permit', 'authorization', 'clearance', 'registration','appendix',
-            'pan', 'gst', 'tin', 'vat', 'emd', 'annexure', 'format',
-            'template', 'bio', 'profile', 'details', 'list','evidence',
-            'sheet', 'balance', 'turnover', 'financial', 'audit','return',
-            'completion', 'work order', 'contract', 'undertaking','order',
-            'affidavit', 'declaration', 'testimonial', 'reference','proforma',
-            'biodata', 'plan', 'esi', 'epf', 'emd', 'fdr', 'power of attorney"'
-            ]
-
-        seen_names = set()
-            
-        for item in documents:
-            # --- NORMALIZATION (The Fix for the Error) ---
-            # Check if item is a Dictionary (New Format) or String (Old Format)
-            if isinstance(item, dict):
-                doc_name = item.get('document_name', '')
-                # Handle case where LLM returns None or non-string for name
-                if not isinstance(doc_name, str):
-                    doc_name = str(doc_name) if doc_name else ""
-                
-                criticality = item.get('criticality', 'Mandatory')
-                context = item.get('context', '')
-            else:
-                # Handle String (Legacy/Fallback)
-                doc_name = str(item)
-                criticality = "Unknown"
-                context = ""
-
-            # Clean the name (Now safe because doc_name is guaranteed to be a string)
-            doc_name_clean = doc_name.strip().strip('.,;-:')
-            doc_lower = doc_name_clean.lower()
-
-            # --- FILTER 1: Length Checks ---
-            if len(doc_name_clean.split()) > 15: # Too long = sentence
-                continue
-            if len(doc_name_clean) < 3: # Too short = noise
-                continue
-
-            # --- FILTER 2: Banned Phrases ---
-            if any(phrase in doc_lower for phrase in banned_phrases):
-                continue
-
-            # --- FILTER 3: Must look like a document ---
-            has_indicator = any(ind in doc_lower for ind in valid_indicators)
-            is_special = any(x in doc_lower for x in ['iso', 'bis', 'itr', 'net worth'])
-            
-            if not (has_indicator or is_special):
-                # If it doesn't look like a document, only allow if it's short
-                if len(doc_name_clean.split()) > 6:
-                    continue
-
-            # --- FILTER 4: Deduplication ---
-            if doc_lower in seen_names:
+        seen = set()
+        
+        for idx, item in enumerate(raw_documents):
+            # Ensure required fields
+            if not item.get('document_name'):
+                print(f"[WARNING]  Skipping item {idx+1}: Missing document_name")
                 continue
             
-            seen_names.add(doc_lower)
+            # Normalize for deduplication
+            doc_name = item['document_name'].strip()
+            doc_name_lower = doc_name.lower()
+            
+            # Skip if already seen
+            if doc_name_lower in seen:
+                print(f"[WARNING]  Skipping duplicate: {doc_name}")
+                continue
+            
+            # Validate verbatim_quote exists 
+            verbatim_quote = item.get('verbatim_quote', '').strip()
+            if not verbatim_quote:
+                print(f"[WARNING]  WARNING: Missing verbatim_quote for '{doc_name}'")
+                print(f"   This requirement may not be properly grounded in RFP text")
+            elif len(verbatim_quote) < 10:
+                print(f"[WARNING]  WARNING: Very short verbatim_quote ({len(verbatim_quote)} chars) for '{doc_name}'")
+            
+            # Set defaults
+            item.setdefault('validation_type', 'document_existence')
+            item.setdefault('criticality', 'Mandatory')
+            item.setdefault('threshold', None)
+            item.setdefault('unit', None)
+            item.setdefault('calculation', None)
+            item.setdefault('years_required', None)
+            item.setdefault('conditions', [])
+            item.setdefault('logic', None)
+            item.setdefault('evidence_documents', [])
+            
+            # Generate or enhance context
+            if not item.get('context'):
+                item['context'] = item.get('description', '')[:200]
+            
+            # Append verbatim_quote to context for downstream matching
+            if verbatim_quote:
+                item['context'] = f"{item.get('context', '')} [Source: \"{verbatim_quote}\"]"
+            
+            # Compose rich description if missing or too short
+            description = item.get('description', '')
+            word_count = len(description.split())
+            
+            if word_count < 30:
+                print(f"[WARNING] Short description ({word_count} words) for '{doc_name}'")
+                # Attempt to enrich
+                item['description'] = self.compose_rich_description(item)
+                print(f"   → Enhanced to {len(item['description'].split())} words")
+            
+            # Validate document_name length
+            if len(doc_name) < 5:
+                print(f"[WARNING]  Skipping: Document name too short: '{doc_name}'")
+                continue
+            
+            if len(doc_name) > 200:
+                print(f"[WARNING]  Truncating long document name: {doc_name[:50]}...")
+                item['document_name'] = doc_name[:200]
+            
+            # Filter banned phrases
+            banned_phrases = ['shall be', 'will be', 'must be', 'should be']
+            if any(phrase in doc_name_lower for phrase in banned_phrases):
+                print(f"[WARNING]  Skipping: Contains banned phrase: '{doc_name}'")
+                continue
             
             # Add to validated list
-            validated.append({
-                "document_name": doc_name_clean,
-                "criticality": criticality,
-                "context": context
-            })
-            
+            seen.add(doc_name_lower)
+            item['criterion_id'] = str(len(validated) + 1)
+            validated.append(item)
+        
+        print(f"[OK] Validated {len(validated)} unique requirements (from {len(raw_documents)} raw)")
+        
         return validated
+
+    
+    def compose_rich_description(self, item: Dict) -> str:
+        """
+        Compose a rich, detailed description from multiple fields.
+        Combines description, context, validation details, and thresholds.
+        """
+        parts = []
+        
+        # 1. Main description
+        desc = item.get("description", "")
+        if desc:
+            parts.append(desc)
+        
+        # 2. Add validation details
+        validation_type = item.get("validation_type", "")
+        
+        if validation_type == "numeric_threshold":
+            threshold = item.get("threshold")
+            unit = item.get("unit", "")
+            calculation = item.get("calculation", "")
+            years = item.get("years_required")
+            
+            details = []
+            if threshold and unit:
+                details.append(f"Threshold: {threshold} {unit}")
+            if years:
+                details.append(f"Period: {years} years")
+            if calculation:
+                calc_map = {
+                    "average": "Average value over period",
+                    "sum": "Total cumulative value",
+                    "minimum": "Minimum value in any year",
+                    "maximum": "Maximum value achieved"
+                }
+                details.append(calc_map.get(calculation, calculation))
+            
+            if details:
+                parts.append(" | ".join(details))
+        
+        elif validation_type == "date_validity":
+            threshold = item.get("threshold")
+            unit = item.get("unit", "")
+            if threshold and unit:
+                parts.append(f"Validity: Minimum {threshold} {unit} required")
+        
+        elif validation_type == "count_threshold":
+            threshold = item.get("threshold")
+            unit = item.get("unit", "")
+            if threshold and unit:
+                parts.append(f"Required Count: At least {threshold} {unit}")
+        
+        elif validation_type == "multi_condition":
+            conditions = item.get("conditions", [])
+            logic = item.get("logic", "AND")
+            if conditions:
+                parts.append(f"Conditions ({logic}): {' + '.join(conditions)}")
+        
+        # 3. Add context (additional clarifications)
+        context = item.get("context", "")
+        if context and context != desc:  # Avoid duplication
+            parts.append(f"Note: {context}")
+        
+        # 4. Add evidence documents suggestion
+        evidence = item.get("evidence_documents", [])
+        if evidence and len(evidence) > 0:
+            evidence_str = ", ".join(evidence[:3])  # Limit to first 3
+            if len(evidence) > 3:
+                evidence_str += ", etc."
+            parts.append(f"Acceptable Evidence: {evidence_str}")
+        
+        # 5. Add criticality indicator
+        criticality = item.get("criticality", "")
+        if criticality:
+            parts.append(f"[{criticality}]")
+        
+        # Combine all parts with proper spacing
+        rich_description = " • ".join(parts) if parts else "No description available"
+        
+        return rich_description
+

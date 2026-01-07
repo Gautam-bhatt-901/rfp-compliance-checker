@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 # Import your app configuration and models
 from app import config as app_config
 from app.database import Base
-from app.models import User, AnalysisHistory  # Import all models here
+from app.models import User, AnalysisHistory, DocumentChunk # Import all models here
 
 # this is the Alembic Config object
 config = context.config

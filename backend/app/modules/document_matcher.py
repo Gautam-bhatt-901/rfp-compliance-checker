@@ -34,9 +34,9 @@ class DocumentMatcher:
                 self.openai_client = OpenAI(api_key=config.OPENAI_API_KEY)
                 self.active_provider = 'openai'
                 self.llm_available = True
-                print("✓ OpenAI client initialized for matching")
+                print("[OK] OpenAI client initialized for matching")
             except Exception as e:
-                print(f"⚠️ OpenAI initialization failed: {e}")
+                print(f"[WARNING] OpenAI initialization failed: {e}")
         
         # Try Anthropic as fallback
         if not self.llm_available and config.ANTHROPIC_API_KEY:
@@ -44,9 +44,9 @@ class DocumentMatcher:
                 self.anthropic_client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
                 self.active_provider = 'anthropic'
                 self.llm_available = True
-                print("✓ Anthropic client initialized for matching")
+                print("[OK] Anthropic client initialized for matching")
             except Exception as e:
-                print(f"⚠️ Anthropic initialization failed: {e}")
+                print(f"[WARNING] Anthropic initialization failed: {e}")
 
         # Initialize traditional matching components (lazy load)
         self.model = None
@@ -85,9 +85,9 @@ class DocumentMatcher:
 
         # Determine matching strategy
         if config.USE_LLM_MATCHING and self.llm_available:
-            print(f"✓ LLM-based matching enabled (Provider: {self.active_provider.upper()})")
+            print(f"[OK] LLM-based matching enabled (Provider: {self.active_provider.upper()})")
         else:
-            print("⚠️ LLM matching unavailable or disabled. Initializing traditional matching...")
+            print("[WARNING] LLM matching unavailable or disabled. Initializing traditional matching...")
             self._initialize_traditional_matching()
     
     def _initialize_traditional_matching(self):
@@ -99,7 +99,7 @@ class DocumentMatcher:
         self.model = SentenceTransformer(config.SENTENCE_TRANSFORMER_MODEL)
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model.to(self.device)
-        print(f"✓ Traditional matching initialized on {self.device}")
+        print(f"[OK] Traditional matching initialized on {self.device}")
         self.traditional_initialized = True
 
     def match_documents(
@@ -130,11 +130,14 @@ class DocumentMatcher:
                 # Legacy/SpaCy fallback format
                 normalized_required_docs.append({
                     "document_name": doc,
+                    "description": "",
                     "context": "No specific context provided.",
                     "criticality": "Unknown"
                 })
             elif isinstance(doc, dict):
                 # New Structured format
+                if "description" not in doc:
+                    doc["description"] = doc.get("context", "")  # Use context as fallback
                 normalized_required_docs.append(doc)
 
         # Extract document content if paths provided (used by both LLM and traditional)
@@ -147,7 +150,7 @@ class DocumentMatcher:
                     if content:
                         document_contents[provided_docs[idx]] = content
                 except Exception as e:
-                    print(f" ⚠️ Could not extract content from {provided_docs[idx]}: {e}")
+                    print(f" [WARNING] Could not extract content from {provided_docs[idx]}: {e}")
         
         # PRIMARY: Try LLM-based matching
         if config.USE_LLM_MATCHING and self.llm_available:
@@ -161,18 +164,18 @@ class DocumentMatcher:
                 )
                 
                 if results and len(results) == len(required_docs):
-                    print(f"✓ LLM matching successful: {len(results)} matches computed")
+                    print(f"[OK] LLM matching successful: {len(results)} matches computed")
                     if self.matching_cost > 0:
                         print(f"💰 API Cost: ${self.matching_cost:.4f}")
                     print("="*70 + "\n")
                     return results
                 else:
-                    print("⚠️ LLM matching returned incomplete results. Falling back...")
+                    print("[WARNING] LLM matching returned incomplete results. Falling back...")
                     
             except Exception as e:
-                print(f"❌ LLM matching failed: {e}")
+                print(f"[FAIL] LLM matching failed: {e}")
                 if not config.ENABLE_TRADITIONAL_FALLBACK:
-                    print("❌ Fallback disabled. Returning empty results.")
+                    print("[FAIL] Fallback disabled. Returning empty results.")
                     return self._generate_empty_results(required_docs)
                 print("→ Falling back to traditional matching...")
         
@@ -349,10 +352,10 @@ Return JSON with matches:
             return result
             
         except json.JSONDecodeError as e:
-            print(f" ⚠️ JSON parsing error: {e}")
+            print(f" [WARNING] JSON parsing error: {e}")
             return {"matches": []}
         except Exception as e:
-            print(f" ❌ OpenAI matching error: {e}")
+            print(f" [FAIL] OpenAI matching error: {e}")
             return {"matches": []}
         
     def _match_with_anthropic(self, prompt: str) -> Dict:
@@ -394,10 +397,10 @@ Return JSON with matches:
             return result
             
         except json.JSONDecodeError as e:
-            print(f" ⚠️ JSON parsing error: {e}")
+            print(f" [WARNING] JSON parsing error: {e}")
             return {"matches": []}
         except Exception as e:
-            print(f" ❌ Anthropic matching error: {e}")
+            print(f" [FAIL] Anthropic matching error: {e}")
             return {"matches": []}
 
     def _format_llm_results(
@@ -458,7 +461,7 @@ Return JSON with matches:
                 if best_match and best_match[1] > 90:
                     matched_file = best_match[0]
                 else:
-                    print(f" ⚠️ LLM matched to non-existent file: {matched_file}")
+                    print(f" [WARNING] LLM matched to non-existent file: {matched_file}")
                     matched_file = "N/A"
                     confidence_level = 'no_match'
             
@@ -483,6 +486,7 @@ Return JSON with matches:
             # Format result (exact same format as traditional)
             results.append({
                 'Required Document': req_name,
+                'Description': required_doc_obj.get("description", ""),
                 'Status': status,
                 'Matched File': matched_file if matched_file else "N/A",
                 'Confidence Score': f"{numeric_confidence:.2f}",
@@ -560,8 +564,14 @@ Return JSON with matches:
                 provided_docs[best_idx] in document_contents
             )
             
+            description = ""
+            if isinstance(required_doc, dict):
+                description = required_doc.get("description", "")
+                required_doc = required_doc.get("documentname", required_doc.get("document", str(required_doc)))
+            
             results.append({
                 'Required Document': required_doc,
+                'Description': description,
                 'Status': status,
                 'Matched File': matched_file,
                 'Confidence Score': f"{best_score:.2f}",

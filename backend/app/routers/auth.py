@@ -19,7 +19,7 @@ from app.auth import (
 )
 from app import config
 
-router = APIRouter()
+router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def register(user: UserCreate, db: Session = Depends(get_db)):
