@@ -285,3 +285,7 @@ dmypy.json
 
 # Cython
 cython_debug/
+
+backend_backup.zip
+backend/extraction_tests/
+backend/test_extraction.py
