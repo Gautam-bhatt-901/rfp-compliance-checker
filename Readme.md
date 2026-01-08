@@ -36,7 +36,7 @@ You'll need API keys from:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/rfp-evaluator.git
+git clone https://github.com/Gautam-bhatt-901/rfp-compliance-checker.git
 
 # Navigate to project directory
 cd rfp-evaluator
