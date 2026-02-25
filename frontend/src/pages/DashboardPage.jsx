@@ -26,6 +26,8 @@ import {
   TextField,
   InputAdornment,
   TableSortLabel,
+  Fade,
+  Zoom,
 } from '@mui/material';
 import {
   Add,
@@ -35,8 +37,10 @@ import {
   CheckCircle,
   Warning,
   Cancel,
-  FolderOpen,
   Search,
+  TrendingUp,
+  AttachMoney,
+  BarChart,
 } from '@mui/icons-material';
 import { rfpAPI } from '../services/api';
 import Navbar from '../components/Layout/Navbar';
@@ -51,11 +55,11 @@ export default function DashboardPage() {
     avgCompletionRate: 0,
     totalCost: 0,
   });
-  
-  //  Search and sorting state
+
+  // Search and sorting state
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('created_at'); // 'created_at' or 'completion_rate'
-  const [sortOrder, setSortOrder] = useState('desc'); // 'asc' or 'desc'
+  const [sortBy, setSortBy] = useState('created_at');
+  const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
     fetchHistory();
@@ -67,7 +71,6 @@ export default function DashboardPage() {
       const data = await rfpAPI.getHistory();
       setHistory(data);
 
-      // Calculate stats
       const totalAnalyses = data.length;
       const avgCompletionRate = totalAnalyses > 0
         ? data.reduce((sum, item) => sum + item.completion_rate, 0) / totalAnalyses
@@ -98,21 +101,16 @@ export default function DashboardPage() {
     }
   };
 
-  //  Handle sort request
   const handleSort = (column) => {
     if (sortBy === column) {
-      // Toggle sort order if clicking same column
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
-      // Set new column and default to descending
       setSortBy(column);
       setSortOrder('desc');
     }
   };
 
-  //  Filter and sort history
   const getFilteredAndSortedHistory = () => {
-    // Filter by search query
     let filtered = history.filter((item) => {
       const searchLower = searchQuery.toLowerCase();
       return (
@@ -122,7 +120,6 @@ export default function DashboardPage() {
       );
     });
 
-    // Sort the filtered results
     filtered.sort((a, b) => {
       let aValue, bValue;
 
@@ -165,13 +162,17 @@ export default function DashboardPage() {
       <>
         <Navbar />
         <Container maxWidth="xl" sx={{ mt: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-          <CircularProgress size={60} />
+          <Box textAlign="center">
+            <CircularProgress size={60} thickness={4} sx={{ color: 'primary.main' }} />
+            <Typography variant="h6" color="text.secondary" sx={{ mt: 3 }}>
+              Loading your dashboard...
+            </Typography>
+          </Box>
         </Container>
       </>
     );
   }
 
-  // Get filtered and sorted data
   const displayHistory = getFilteredAndSortedHistory();
 
   return (
@@ -179,226 +180,415 @@ export default function DashboardPage() {
       <Navbar />
       <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
         {/* Header */}
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Box>
-            <Typography variant="h4" fontWeight="bold" gutterBottom>
-              📊 Dashboard
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              View and manage your RFP compliance analyses
-            </Typography>
+        <Fade in timeout={600}>
+          <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+            <Box>
+              <Typography
+                variant="h3"
+                fontWeight={900}
+                gutterBottom
+                sx={{
+                  background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                 Dashboard
+              </Typography>
+              <Typography variant="h6" color="text.secondary" fontWeight={400}>
+                View and manage your RFP compliance analyses
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<Add />}
+              onClick={() => navigate('/analyze')}
+              size="large"
+              sx={{
+                px: 4,
+                py: 1.5,
+                borderRadius: 3,
+                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
+                fontWeight: 700,
+                fontSize: '1rem',
+                '&:hover': {
+                  background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
+                  boxShadow: '0 12px 32px rgba(99, 102, 241, 0.5)',
+                  transform: 'translateY(-2px)',
+                },
+              }}
+            >
+              New Analysis
+            </Button>
           </Box>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<Add />}
-            onClick={() => navigate('/analyze')}
-            size="large"
-          >
-            New Analysis
-          </Button>
-        </Box>
+        </Fade>
 
         {error && (
-          <Alert severity="error" onClose={() => setError('')} sx={{ mb: 3 }}>
-            {error}
-          </Alert>
+          <Fade in>
+            <Alert
+              severity="error"
+              onClose={() => setError('')}
+              sx={{
+                mb: 3,
+                borderRadius: 3,
+                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.2)',
+              }}
+            >
+              {error}
+            </Alert>
+          </Fade>
         )}
 
         {/* Statistics Cards */}
         <Grid container spacing={3} mb={4}>
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent>
-                <Box display="flex" alignItems="center" mb={1}>
-                  <Assessment color="primary" sx={{ mr: 1 }} />
-                  <Typography variant="h6" color="text.secondary">
-                    Total Analyses
-                  </Typography>
-                </Box>
-                <Typography variant="h4" fontWeight="bold">
-                  {stats.totalAnalyses}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent>
-                <Box display="flex" alignItems="center" mb={1}>
-                  <CheckCircle color="success" sx={{ mr: 1 }} />
-                  <Typography variant="h6" color="text.secondary">
-                    Avg Completion Rate
-                  </Typography>
-                </Box>
-                <Typography variant="h4" fontWeight="bold">
-                  {stats.avgCompletionRate.toFixed(1)}%
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent>
-                <Box display="flex" alignItems="center" mb={1}>
-                  <Warning color="warning" sx={{ mr: 1 }} />
-                  <Typography variant="h6" color="text.secondary">
-                    Total API Cost
-                  </Typography>
-                </Box>
-                <Typography variant="h4" fontWeight="bold">
-                  ${stats.totalCost.toFixed(2)}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
+          {[
+            {
+              icon: <Assessment sx={{ fontSize: 40 }} />,
+              title: 'Total Analyses',
+              value: stats.totalAnalyses,
+              color: '#6366f1',
+              gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+              delay: 200,
+            },
+            {
+              icon: <BarChart sx={{ fontSize: 40 }} />,
+              title: 'Avg Completion Rate',
+              value: `${stats.avgCompletionRate.toFixed(1)}%`,
+              color: '#10b981',
+              gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              delay: 400,
+            },
+            {
+              icon: <AttachMoney sx={{ fontSize: 40 }} />,
+              title: 'Total API Cost',
+              value: `$${stats.totalCost.toFixed(2)}`,
+              color: '#f59e0b',
+              gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+              delay: 600,
+            },
+          ].map((stat, index) => (
+            <Grid item xs={12} md={4} key={index}>
+              <Zoom in timeout={stat.delay}>
+                <Card
+                  sx={{
+                    height: '100%',
+                    background: 'white',
+                    borderRadius: 4,
+                    overflow: 'hidden',
+                    position: 'relative',
+                    transition: 'all 0.3s',
+                    '&:hover': {
+                      transform: 'translateY(-8px)',
+                      boxShadow: `0 20px 40px ${stat.color}30`,
+                    },
+                    '&::before': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      height: '4px',
+                      background: stat.gradient,
+                    },
+                  }}
+                >
+                  <CardContent sx={{ p: 3 }}>
+                    <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                      <Box
+                        sx={{
+                          width: 60,
+                          height: 60,
+                          borderRadius: 3,
+                          background: `${stat.color}15`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: stat.color,
+                        }}
+                      >
+                        {stat.icon}
+                      </Box>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary" fontWeight={600} mb={1}>
+                      {stat.title}
+                    </Typography>
+                    <Typography variant="h3" fontWeight={900} color="text.primary">
+                      {stat.value}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Zoom>
+            </Grid>
+          ))}
         </Grid>
 
         {/* Analysis History Table */}
-        <Paper sx={{ p: 3 }}>
-          {/*  Header with search */}
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-            <Typography variant="h5" fontWeight="bold">
-              Analysis History
-            </Typography>
-            {/*  Search field */}
-            <TextField
-              placeholder="Search analyses..."
-              variant="outlined"
-              size="small"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              sx={{ width: 300 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
-
-          {history.length === 0 ? (
-            <Box textAlign="center" py={8}>
-              <Assessment sx={{ fontSize: 80, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                No analyses yet
+        <Fade in timeout={800}>
+          <Paper
+            sx={{
+              p: 4,
+              borderRadius: 4,
+              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
+            }}
+          >
+            {/* Header with search */}
+            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+              <Typography variant="h5" fontWeight={800} color="text.primary">
+                Analysis History
               </Typography>
-              <Typography variant="body2" color="text.secondary" mb={3}>
-                Start by uploading your first RFP document
-              </Typography>
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={() => navigate('/analyze')}
-              >
-                Create First Analysis
-              </Button>
+              <TextField
+                placeholder="Search analyses..."
+                variant="outlined"
+                size="small"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                sx={{
+                  width: 350,
+                  '& .MuiOutlinedInput-root': {
+                    borderRadius: 3,
+                    bgcolor: '#f8fafc',
+                    '&:hover': {
+                      bgcolor: 'white',
+                    },
+                  },
+                }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
             </Box>
-          ) : (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    {/*  Batch column */}
-                    <TableCell><strong>RFP Document</strong></TableCell>
-                    {/*  Date with sorting */}
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortBy === 'created_at'}
-                        direction={sortBy === 'created_at' ? sortOrder : 'desc'}
-                        onClick={() => handleSort('created_at')}
-                      >
-                        <strong>Date</strong>
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell align="center"><strong>Required Docs</strong></TableCell>
-                    <TableCell align="center"><strong>Provided Docs</strong></TableCell>
-                    <TableCell align="center"><strong>Matched</strong></TableCell>
-                    <TableCell align="center"><strong>Review</strong></TableCell>
-                    <TableCell align="center"><strong>Missing</strong></TableCell>
-                    {/*  Completion with sorting */}
-                    <TableCell align="center">
-                      <TableSortLabel
-                        active={sortBy === 'completion_rate'}
-                        direction={sortBy === 'completion_rate' ? sortOrder : 'desc'}
-                        onClick={() => handleSort('completion_rate')}
-                      >
-                        <strong>Completion</strong>
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell align="center"><strong>Cost</strong></TableCell>
-                    <TableCell align="center"><strong>Actions</strong></TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {displayHistory.map((item) => (
-                    <TableRow key={item.id} hover>
-                      {/*  Batch column cell */}
-                      <TableCell>{item.rfp_filename}</TableCell>
-                      <TableCell>{formatDate(item.created_at)}</TableCell>
-                      <TableCell align="center">{item.num_required_docs}</TableCell>
-                      <TableCell align="center">{item.num_provided_docs}</TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          icon={<CheckCircle />}
-                          label={item.num_matched}
-                          color="success"
-                          size="small"
-                        />
+
+            {history.length === 0 ? (
+              <Box textAlign="center" py={10}>
+                <Box
+                  sx={{
+                    width: 120,
+                    height: 120,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    margin: '0 auto',
+                    mb: 3,
+                    opacity: 0.9,
+                  }}
+                >
+                  <Assessment sx={{ fontSize: 60, color: 'white' }} />
+                </Box>
+                <Typography variant="h5" fontWeight={700} color="text.primary" gutterBottom>
+                  No analyses yet
+                </Typography>
+                <Typography variant="body1" color="text.secondary" mb={4}>
+                  Start by uploading your first RFP document
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<Add />}
+                  onClick={() => navigate('/analyze')}
+                  size="large"
+                  sx={{
+                    px: 4,
+                    py: 1.5,
+                    borderRadius: 3,
+                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                    boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
+                  }}
+                >
+                  Create First Analysis
+                </Button>
+              </Box>
+            ) : (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        RFP Document
+                      </TableCell>
+                      <TableCell>
+                        <TableSortLabel
+                          active={sortBy === 'created_at'}
+                          direction={sortBy === 'created_at' ? sortOrder : 'desc'}
+                          onClick={() => handleSort('created_at')}
+                          sx={{ fontWeight: 700, fontSize: '0.95rem' }}
+                        >
+                          Date
+                        </TableSortLabel>
+                      </TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        Required Docs
+                      </TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        Provided Docs
+                      </TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        Matched
+                      </TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        Review
+                      </TableCell>
+                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        Missing
                       </TableCell>
                       <TableCell align="center">
-                        <Chip
-                          icon={<Warning />}
-                          label={item.num_review}
-                          color="warning"
-                          size="small"
-                        />
+                        <TableSortLabel
+                          active={sortBy === 'completion_rate'}
+                          direction={sortBy === 'completion_rate' ? sortOrder : 'desc'}
+                          onClick={() => handleSort('completion_rate')}
+                          sx={{ fontWeight: 700, fontSize: '0.95rem' }}
+                        >
+                          Completion
+                        </TableSortLabel>
                       </TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          icon={<Cancel />}
-                          label={item.num_missing}
-                          color="error"
-                          size="small"
-                        />
+                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        Cost
                       </TableCell>
-                      <TableCell align="center">
-                        <Chip
-                          label={`${item.completion_rate.toFixed(1)}%`}
-                          color={getCompletionColor(item.completion_rate)}
-                          size="small"
-                        />
-                      </TableCell>
-                      <TableCell align="center">${item.api_cost.toFixed(4)}</TableCell>
-                      <TableCell align="center">
-                        <Tooltip title="View Details">
-                          <IconButton
-                            color="primary"
-                            size="small"
-                            onClick={() => handleView(item.id)}
-                          >
-                            <Visibility />
-                          </IconButton>
-                        </Tooltip>
-                        <Tooltip title="Delete">
-                          <IconButton
-                            color="error"
-                            size="small"
-                            onClick={() => handleDelete(item.id)}
-                          >
-                            <Delete />
-                          </IconButton>
-                        </Tooltip>
+                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
+                        Actions
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </Paper>
+                  </TableHead>
+                  <TableBody>
+                    {displayHistory.map((item, index) => (
+                      <Fade in timeout={200 + index * 50} key={item.id}>
+                        <TableRow
+                          hover
+                          sx={{
+                            '&:hover': {
+                              bgcolor: '#f8fafc',
+                              transform: 'scale(1.005)',
+                              transition: 'all 0.2s',
+                            },
+                          }}
+                        >
+                          <TableCell>
+                            <Typography variant="body2" fontWeight={600}>
+                              {item.rfp_filename}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>
+                            <Typography variant="body2" color="text.secondary">
+                              {formatDate(item.created_at)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={item.num_required_docs}
+                              size="small"
+                              sx={{
+                                bgcolor: '#f1f5f9',
+                                color: '#475569',
+                                fontWeight: 700,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={item.num_provided_docs}
+                              size="small"
+                              sx={{
+                                bgcolor: '#dbeafe',
+                                color: '#1e40af',
+                                fontWeight: 700,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              icon={<CheckCircle sx={{ fontSize: 16 }} />}
+                              label={item.num_matched}
+                              color="success"
+                              size="small"
+                              sx={{ fontWeight: 700 }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              icon={<Warning sx={{ fontSize: 16 }} />}
+                              label={item.num_review}
+                              color="warning"
+                              size="small"
+                              sx={{ fontWeight: 700 }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              icon={<Cancel sx={{ fontSize: 16 }} />}
+                              label={item.num_missing}
+                              color="error"
+                              size="small"
+                              sx={{ fontWeight: 700 }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              label={`${item.completion_rate.toFixed(1)}%`}
+                              color={getCompletionColor(item.completion_rate)}
+                              size="small"
+                              sx={{
+                                fontWeight: 700,
+                                minWidth: 60,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <Typography variant="body2" fontWeight={600} color="text.secondary">
+                              ${item.api_cost.toFixed(4)}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Box display="flex" gap={0.5} justifyContent="center">
+                              <Tooltip title="View Details" arrow>
+                                <IconButton
+                                  color="primary"
+                                  size="small"
+                                  onClick={() => handleView(item.id)}
+                                  sx={{
+                                    '&:hover': {
+                                      background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                                      color: 'white',
+                                      transform: 'scale(1.1)',
+                                    },
+                                  }}
+                                >
+                                  <Visibility fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete" arrow>
+                                <IconButton
+                                  color="error"
+                                  size="small"
+                                  onClick={() => handleDelete(item.id)}
+                                  sx={{
+                                    '&:hover': {
+                                      bgcolor: 'error.main',
+                                      color: 'white',
+                                      transform: 'scale(1.1)',
+                                    },
+                                  }}
+                                >
+                                  <Delete fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      </Fade>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </Fade>
       </Container>
     </>
   );

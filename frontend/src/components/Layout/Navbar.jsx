@@ -14,6 +14,7 @@ import {
   MenuItem,
   Avatar,
   Container,
+  Fade,
 } from '@mui/material';
 import {
   Description,
@@ -21,6 +22,7 @@ import {
   CloudUpload,
   AccountCircle,
   Logout,
+  TrendingUp,
 } from '@mui/icons-material';
 import { useAuth } from '../../context/AuthContext';
 
@@ -47,94 +49,177 @@ export default function Navbar() {
   const isActive = (path) => location.pathname === path;
 
   if (!user) {
-    return null; // Don't show navbar if not logged in
+    return null;
   }
 
   return (
     <AppBar 
       position="sticky" 
       elevation={0}
-      sx={{ 
-        bgcolor: 'background.paper',
-        borderBottom: '1px solid',
-        borderColor: 'divider',
+      sx={{
+        background: 'rgba(255, 255, 255, 0.8)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(99, 102, 241, 0.1)',
+        boxShadow: '0 4px 30px rgba(0, 0, 0, 0.05)',
       }}
     >
       <Container maxWidth="xl">
-        <Toolbar disableGutters>
+        <Toolbar sx={{ justifyContent: 'space-between', py: 1 }}>
           {/* Logo */}
-          <Description sx={{ mr: 1, color: 'primary.main' }} />
-          <Typography
-            variant="h6"
-            noWrap
-            component="div"
-            sx={{
-              mr: 4,
-              fontWeight: 700,
-              color: 'text.primary',
-              cursor: 'pointer',
-            }}
+          <Box
+            display="flex"
+            alignItems="center"
+            sx={{ cursor: 'pointer' }}
             onClick={() => navigate('/dashboard')}
           >
-            RFP Pre Evaluator
-          </Typography>
+            <Box
+              sx={{
+                background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
+                borderRadius: '12px',
+                p: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                mr: 2,
+                boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
+                transition: 'transform 0.2s',
+                '&:hover': {
+                  transform: 'scale(1.05) rotate(5deg)',
+                },
+              }}
+            >
+              <TrendingUp sx={{ color: 'white', fontSize: 28 }} />
+            </Box>
+            <Typography
+              variant="h6"
+              sx={{
+                background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                fontWeight: 800,
+                letterSpacing: '-0.5px',
+              }}
+            >
+              Eval RFP
+            </Typography>
+          </Box>
 
           {/* Navigation Items */}
-          <Box sx={{ flexGrow: 1, display: 'flex', gap: 1 }}>
+          <Box display="flex" alignItems="center" gap={1}>
             <Button
               startIcon={<Dashboard />}
               onClick={() => navigate('/dashboard')}
               sx={{
                 color: isActive('/dashboard') ? 'primary.main' : 'text.secondary',
                 bgcolor: isActive('/dashboard') ? 'primary.light' : 'transparent',
+                px: 3,
+                py: 1,
+                borderRadius: 2.5,
+                fontWeight: 600,
+                transition: 'all 0.3s',
                 '&:hover': {
                   bgcolor: isActive('/dashboard') ? 'primary.light' : 'action.hover',
+                  transform: 'translateY(-2px)',
                 },
               }}
             >
               Dashboard
             </Button>
+
             <Button
               startIcon={<CloudUpload />}
               onClick={() => navigate('/analyze')}
               sx={{
                 color: isActive('/analyze') ? 'primary.main' : 'text.secondary',
                 bgcolor: isActive('/analyze') ? 'primary.light' : 'transparent',
+                px: 3,
+                py: 1,
+                borderRadius: 2.5,
+                fontWeight: 600,
+                transition: 'all 0.3s',
                 '&:hover': {
                   bgcolor: isActive('/analyze') ? 'primary.light' : 'action.hover',
+                  transform: 'translateY(-2px)',
                 },
               }}
             >
               New Analysis
             </Button>
-          </Box>
 
-          {/* User Menu */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              {user.email}
-            </Typography>
-            <IconButton onClick={handleMenu} size="small">
-              <Avatar sx={{ bgcolor: 'primary.main', width: 36, height: 36 }}>
-                {user.email[0].toUpperCase()}
-              </Avatar>
-            </IconButton>
-            <Menu
-              anchorEl={anchorEl}
-              open={Boolean(anchorEl)}
-              onClose={handleClose}
-              transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-              anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+            {/* User Menu */}
+            <Box
+              sx={{
+                ml: 2,
+                pl: 2,
+                borderLeft: '2px solid',
+                borderColor: 'divider',
+              }}
             >
-              <MenuItem disabled>
-                <AccountCircle sx={{ mr: 1 }} />
-                {user.full_name || 'My Account'}
-              </MenuItem>
-              <MenuItem onClick={handleLogout}>
-                <Logout sx={{ mr: 1 }} />
-                Logout
-              </MenuItem>
-            </Menu>
+              <IconButton
+                onClick={handleMenu}
+                sx={{
+                  p: 0,
+                  transition: 'transform 0.2s',
+                  '&:hover': {
+                    transform: 'scale(1.1)',
+                  },
+                }}
+              >
+                <Avatar
+                  sx={{
+                    bgcolor: 'primary.main',
+                    background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
+                    width: 40,
+                    height: 40,
+                    fontWeight: 700,
+                    boxShadow: '0 4px 12px rgba(99, 102, 241, 0.3)',
+                  }}
+                >
+                  {user.email[0].toUpperCase()}
+                </Avatar>
+              </IconButton>
+              <Menu
+                anchorEl={anchorEl}
+                open={Boolean(anchorEl)}
+                onClose={handleClose}
+                TransitionComponent={Fade}
+                PaperProps={{
+                  sx: {
+                    mt: 1.5,
+                    borderRadius: 3,
+                    minWidth: 200,
+                    boxShadow: '0 10px 40px rgba(0, 0, 0, 0.1)',
+                  },
+                }}
+              >
+                <MenuItem disabled sx={{ opacity: 1, '&.Mui-disabled': { opacity: 1 } }}>
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight={700} color="text.primary">
+                      {user.full_name || 'My Account'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {user.email}
+                    </Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem
+                  onClick={handleLogout}
+                  sx={{
+                    color: 'error.main',
+                    mt: 1,
+                    borderRadius: 1.5,
+                    mx: 1,
+                    '&:hover': {
+                      bgcolor: 'error.light',
+                      color: 'error.dark',
+                    },
+                  }}
+                >
+                  <Logout sx={{ mr: 1, fontSize: 20 }} />
+                  Logout
+                </MenuItem>
+              </Menu>
+            </Box>
           </Box>
         </Toolbar>
       </Container>
