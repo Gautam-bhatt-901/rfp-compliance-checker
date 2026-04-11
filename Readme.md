@@ -39,13 +39,38 @@ You'll need API keys from:
 git clone https://github.com/Gautam-bhatt-901/rfp-compliance-checker.git
 
 # Navigate to project directory
-cd rfp-evaluator
+cd rfp-compliance-checker
 ```
 
 
 ---
 
-##  Step 2: Backend Setup
+## 🐳 Quick Start: Docker (Recommended)
+
+The easiest way to get the system running with all dependencies (PostgreSQL, pgvector, Python, Node.js) in one command.
+
+### 1. Configure Environment
+1. Create a `.env` file in the **root** of the project.
+2. Add your API keys and configuration:
+   ```env
+   OPENAI_API_KEY="your-openai-api-key"
+   SECRET_KEY="generate-a-random-secret-key"
+   ```
+
+### 2. Launch Services
+```bash
+# Start all services
+docker-compose up --build
+```
+
+### 3. Access the Application
+- **Frontend UI**: [http://localhost:5173](http://localhost:5173)
+- **Backend API**: [http://localhost:8000](http://localhost:8000)
+- **API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+---
+
+## 🛠️ Manual Installation Guide
 
 ### 2.1 Create Virtual Environment
 
@@ -704,5 +729,5 @@ After successful installation:
 
 ---
 
-**Installation Guide Version**: 2.0
+**Installation Guide Version**: 2.1
 
