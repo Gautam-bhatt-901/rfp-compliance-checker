@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:password@db:5432/rfp_db
+      - DATABASE_URL=postgresql://rfp_user:admin@db:5432/rfp_db
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - SECRET_KEY=${SECRET_KEY}
@@ -14,7 +14,8 @@ services:
       - ./backend:/app
       - ./backend/data:/app/data
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
@@ -26,18 +27,25 @@ services:
       - /app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000/api
+    depends_on:
+      - backend
     command: npm run dev -- --host
 
   db:
-    image: postgres:15
+    image: pgvector/pgvector:15-pg1.1
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
+      - POSTGRES_USER=rfp_user
+      - POSTGRES_PASSWORD=admin
       - POSTGRES_DB=rfp_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rfp_user -d rfp_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   postgres_data:
