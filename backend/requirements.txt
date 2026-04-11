@@ -25,6 +25,7 @@ markdown  # Markdown files
 openpyxl  # Excel 
 pypandoc  # Universal document converter
 PyPDF2 
+docling
 
 # LLM APIs
 openai  # GPT-4, GPT-4o

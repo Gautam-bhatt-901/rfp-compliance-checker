@@ -50,9 +50,9 @@ DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '10'))
 DB_POOL_RECYCLE = int(os.getenv('DB_POOL_RECYCLE', '3600'))
 
 # RAG Thresholds
-RAG_CONFIDENCE_HIGH = 0.60  # Present
-RAG_CONFIDENCE_MEDIUM = 0.45  # Review
-RAG_CONFIDENCE_LOW = 0.30  # Missing
+RAG_CONFIDENCE_HIGH = 0.70  # Present
+RAG_CONFIDENCE_MEDIUM = 0.65  # Review
+RAG_CONFIDENCE_LOW = 0.40  # Missing
 
 # Content Extraction
 MAX_PAGES_TO_EXTRACT = int(os.getenv('MAX_PAGES_TO_EXTRACT', '0'))  # 0 = all pages
@@ -173,7 +173,7 @@ USE_ENHANCED_EXTRACTION = os.getenv('USE_ENHANCED_EXTRACTION', 'true').lower() =
 # PyMuPDF4LLM Configuration
 PYMUPDF4LLM_PAGE_CHUNKS = os.getenv('PYMUPDF4LLM_PAGE_CHUNKS', 'true').lower() == 'true'
 PYMUPDF4LLM_WRITE_IMAGES = os.getenv('PYMUPDF4LLM_WRITE_IMAGES', 'false').lower() == 'true'
-PYMUPDF4LLM_TABLE_STRATEGY = os.getenv('PYMUPDF4LLM_TABLE_STRATEGY', 'lines_strict')  # 'lines', 'lines_strict', 'explicit'
+PYMUPDF4LLM_TABLE_STRATEGY = os.getenv('PYMUPDF4LLM_TABLE_STRATEGY', 'text')
 PYMUPDF4LLM_EXTRACT_WORDS = os.getenv('PYMUPDF4LLM_EXTRACT_WORDS', 'false').lower() == 'true'
 
 # Table Handling
@@ -191,6 +191,13 @@ PADDLEOCR_SHOW_LOG = os.getenv('PADDLEOCR_SHOW_LOG', 'false').lower() == 'true'
 
 POPPLER_PATH = os.getenv('POPPLER_PATH', None)
 
+# DOCLING EXTRACTOR SETTINGS
+# Controls whether Docling runs OCR on scanned/image-based PDFs.
+# Keep False for native text PDFs (faster). Set True only for scanned RFPs.
+DOCLING_DO_OCR = os.getenv('DOCLING_DO_OCR', 'false').lower() == 'true'
+EXTRACTION_CACHE_ENABLED = os.getenv('EXTRACTION_CACHE_ENABLED', 'true').lower() == 'true'
+
+LANGEXTRACT_API_KEY = os.getenv('OPENAI_API_KEY', '')
 
 # ============ COMPLIANCE VALIDATION SETTINGS ============
 
@@ -210,7 +217,7 @@ DATE_VALIDATION_BUFFER_DAYS = int(os.getenv('DATE_VALIDATION_BUFFER_DAYS', '0'))
 # Count validation settings
 COUNT_VALIDATION_STRICT = os.getenv('COUNT_VALIDATION_STRICT', 'true').lower() == 'true'
 
-print(f"✓ Structured Validation: {'ENABLED' if ENABLE_STRUCTURED_VALIDATION else 'DISABLED'}")
+print(f" Structured Validation: {'ENABLED' if ENABLE_STRUCTURED_VALIDATION else 'DISABLED'}")
 
 # ============ PERFORMANCE OPTIMIZATION SETTINGS ============
 
@@ -247,3 +254,96 @@ ALLOWED_MIME_TYPES = ['application/pdf', 'application/msword',
                       'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
 SANITIZE_FILENAMES = True
 MAX_CONCURRENT_UPLOADS = int(os.getenv('MAX_CONCURRENT_UPLOADS', '10'))
+
+
+# ============ GEM BID FORMAT SETTINGS ============
+# New GeM bid format uses zone-based extraction instead of single-table extraction.
+# Set GEM_BID_FORMAT=false in .env to force old table-based extraction for all PDFs.
+GEM_BID_FORMAT = os.getenv("GEM_BID_FORMAT", "true").lower() == "true"
+
+# Zone B anchor patterns — maps document name keyword → regex to find its clause.
+# ADD NEW DOCUMENT TYPES HERE without touching any code.
+GEM_ZONE_B_ANCHORS = {
+    "Experience Criteria":     r"Experience Criteria\s*:|Years of Past Experience",
+    "Past Performance":        r"Past Performance\s*:",
+    "Bidder Turnover":         r"minimum average annual financial turnover of the bidder",
+    "OEM Annual Turnover":     r"OEM Turn Over Criteria\s*:",
+    "Past Project Experience": r"Past Experience of Similar Services:|Past Project Experience",
+
+    # ── Tax / Registration documents ──────────────────────────────────────────
+    "GST":                      r"GST\s*(?:Registration)?\s*(?:Certificate)?\s*[:\-]|Goods\s+and\s+Services\s+Tax",
+    "PAN":                      r"PAN\s*(?:Card)?\s*[:\-]|Permanent\s+Account\s+Number",
+    "TAN":                      r"TAN\s*(?:Certificate)?\s*[:\-]|Tax\s+Deduction\s+Account\s+Number",
+    "Income Tax":               r"Income\s+Tax\s+(?:Return|Certificate|Clearance)\s*[:\-]",
+    "ITR":                      r"ITR\s*[:\-]|Income\s+Tax\s+Return",
+
+    # ── Company / Entity Registration ─────────────────────────────────────────
+    "Incorporation":            r"Certificate\s+of\s+Incorporation|Incorporation\s+Certificate",
+    "MOA":                      r"Memorandum\s+of\s+Association|MOA\s*[:\-]",
+    "AOA":                      r"Articles\s+of\s+Association|AOA\s*[:\-]",
+    "MSME":                     r"MSME\s+(?:Certificate|Registration|Udyam)\s*[:\-]|Udyam\s+Registration",
+    "Startup":                  r"Startup\s+(?:Certificate|Recognition|India)\s*[:\-]|DPIIT",
+    "Partnership":              r"Partnership\s+Deed\s*[:\-]",
+    "LLP":                      r"LLP\s+(?:Agreement|Deed)\s*[:\-]|Limited\s+Liability\s+Partnership",
+
+    # ── Quality / ISO Certifications ──────────────────────────────────────────
+    "ISO":                      r"ISO\s*\d+|International\s+Organization\s+for\s+Standardization",
+    "CMMI":                     r"CMMI\s*(?:Level)?\s*\d?|Capability\s+Maturity\s+Model",
+    "BIS":                      r"BIS\s+(?:Certification|License)\s*[:\-]|Bureau\s+of\s+Indian\s+Standards",
+    "Quality":                  r"Quality\s+(?:Certificate|Certification|Management)\s*[:\-]",
+
+    # ── Financial Documents ───────────────────────────────────────────────────
+    "Turnover":                 r"(?:Annual\s+)?Turnover\s*[:\-]|financial\s+turnover",
+    "Balance Sheet":            r"Balance\s+Sheet\s*[:\-]|Audited\s+(?:Financial\s+)?Accounts",
+    "Net Worth":                r"Net\s+Worth\s*(?:Certificate)?\s*[:\-]",
+    "Solvency":                 r"Solvency\s+Certificate\s*[:\-]",
+    "Audit":                    r"Auditor['s]?\s+Report|Statutory\s+Audit",
+    "CA Certificate":           r"Chartered\s+Accountant\s*['s]?\s+Certificate|CA\s+Certificate",
+
+    # ── Labour / Employment Documents ─────────────────────────────────────────
+    "EPF":                      r"EPF\s*(?:Registration|Certificate)?\s*[:\-]|Provident\s+Fund\s+Registration",
+    "ESI":                      r"ESI\s*(?:Registration|Certificate)?\s*[:\-]|Employee\s+State\s+Insurance",
+    "Labour License":           r"Labour\s+License\s*[:\-]|Labour\s+Department",
+
+    # ── Technical / Compliance ────────────────────────────────────────────────
+    "Blacklist":                r"(?:Not\s+)?Blacklisted|Debarment\s+Certificate|Self\s+Declaration.*blacklist",
+    "Affidavit":                r"Affidavit\s*[:\-]|Sworn\s+Statement",
+    "Undertaking":              r"Undertaking\s*[:\-]|Self\s+Declaration",
+    "Power of Attorney":        r"Power\s+of\s+Attorney\s*[:\-]|POA\s*[:\-]",
+    "Authorization":            r"(?:OEM\s+)?Authoriz(?:ation|ed)\s+(?:Letter|Certificate)\s*[:\-]",
+    "Work Order":               r"Work\s+Order\s*[:\-]|Purchase\s+Order",
+    "Completion Certificate":   r"Completion\s+Certificate\s*[:\-]|Work\s+Completion",
+
+    # ── Human Resource Documents ──────────────────────────────────────────────
+    "CV":                       r"Curriculum\s+Vitae|CV\s*[:\-]|Bio[-\s]?[Dd]ata",
+    "Manpower":                 r"Manpower\s*[:\-]|Employee\s+Count|HR\s+Strength",
+    "Org Chart":                r"Organization\s*(?:al)?\s+Chart|Org(?:aniz)?\s+Structure",
+
+    # ── Bid Security / EMD ────────────────────────────────────────────────────
+    "EMD":                      r"Earnest\s+Money\s+Deposit\s*[:\-]|EMD\s*[:\-]|Bid\s+Security",
+    "Performance Security":     r"Performance\s+(?:Security|Guarantee|Bond)\s*[:\-]",
+}
+
+# Maximum characters of ATC text to send to the LLM per call.
+GEM_ATC_MAX_CHARS_PER_CALL = int(os.getenv("GEM_ATC_MAX_CHARS_PER_CALL", "25000"))
+
+# Number of RAG chunks to retrieve per requirement during matching
+RAG_TOP_K_CHUNKS = int(os.getenv("RAG_TOP_K_CHUNKS", "10"))
+
+# ATC section heading variants — used to locate Zone C boundary
+GEM_ATC_SECTION_HEADERS = [
+    "Buyer Added Bid Specific Terms and Conditions",
+    "Buyer Added text based ATC clauses",
+    "Buyer Added ATC",
+    "ATC clauses",
+]
+
+# Patterns that tag a document as belonging to Zone C (ATC)
+GEM_ATC_DOC_PATTERNS = [
+    "Requested in ATC",
+    "Additional Doc",
+    "OEM Authorization Certificate",
+]
+
+# Heading that marks the start of Zone D (BoQ / Technical Specs)
+GEM_BOQ_SECTION_HEADER = "Technical Specifications"

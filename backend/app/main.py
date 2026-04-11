@@ -101,6 +101,16 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[WARNING] Optional component initialization failed: {e}")
     
+    # 4. Initialize PDF Extractor
+    try:
+        from app.dependencies import get_list_extractor
+        extractor = get_list_extractor()          # triggers DoclingExtractor.__init__
+        # Pre-warm Docling by calling _get_converter() which downloads models
+        extractor._get_converter()
+        logger.info("[OK] DoclingExtractor pre-warmed (models ready)")
+    except Exception as e:
+        logger.warning(f"[WARNING] DoclingExtractor pre-warm failed: {e}")
+
     # 4. Create required directories
     from app.config import DATA_DIR, UPLOAD_RFP_DIR, UPLOAD_DOCS_DIR
     import os

@@ -45,9 +45,9 @@ class RAGMatcher:
                 self.openai_client = OpenAI(api_key=config.OPENAI_API_KEY)
                 self.llm_available = True
                 self.active_provider = 'openai'
-                print("✓ OpenAI LLM initialized for verification")
+                print("[OK] OpenAI LLM initialized for verification")
             except Exception as e:
-                print(f"⚠️ OpenAI LLM init failed: {e}")
+                print(f"[FAIL] OpenAI LLM init failed: {e}")
 
         # Try Anthropic Fallback
         if not self.llm_available and config.ANTHROPIC_API_KEY:
@@ -55,9 +55,9 @@ class RAGMatcher:
                 self.anthropic_client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
                 self.llm_available = True
                 self.active_provider = 'anthropic'
-                print("✓ Anthropic LLM initialized for verification")
+                print("[OK] Anthropic LLM initialized for verification")
             except Exception as e:
-                print(f"⚠️ Anthropic LLM init failed: {e}")
+                print(f"[FAIL] Anthropic LLM init failed: {e}")
 
         # 3. Text Splitter (Chunking)
         # Larger chunks are better for compliance docs to keep context together
@@ -83,12 +83,12 @@ class RAGMatcher:
         try:
             from app.modules.compliance_validator import ComplianceValidator
             self.validator = ComplianceValidator()
-            print("✓ ComplianceValidator initialized")
+            print("[OK] ComplianceValidator initialized")
         except Exception as e:
-            print(f"⚠️  ComplianceValidator initialization failed: {e}")
+            print(f"[FAIL]  ComplianceValidator initialization failed: {e}")
             self.validator = None
         
-        print(f"✓ Hybrid RAG Matcher initialized")
+        print(f"[OK] Hybrid RAG Matcher initialized")
 
     def ingest_user_documents(
         self, 
@@ -101,7 +101,7 @@ class RAGMatcher:
         Reads user files, chunks them, creates embeddings, and saves to DB.
         """
         print(f"\n{'='*70}")
-        print(f"📚 INGESTING DOCUMENTS FOR USER {user_id}")
+        print(f"[INFO] INGESTING DOCUMENTS FOR USER {user_id}")
         print(f"{'='*70}")
         start_time = time.time()
 
@@ -112,10 +112,10 @@ class RAGMatcher:
                     DocumentChunk.user_id == user_id
                 ).delete()
                 db.commit()
-                print(f"🗑️ Cleared {deleted_count} old chunks")
+                print(f"[OK] Cleared {deleted_count} old chunks")
             except Exception as e:
                 db.rollback()
-                print(f"⚠️ Error clearing old chunks: {e}")
+                print(f"[FAIL] Error clearing old chunks: {e}")
 
         all_chunks = []
         stats = {
@@ -130,29 +130,29 @@ class RAGMatcher:
         for file_path in file_paths:
             try:
                 filename = os.path.basename(file_path)
-                print(f"\n📄 Processing: {filename}")
+                print(f"\n[INFO] Processing: {filename}")
                 
                 chunks = self._extract_and_chunk_file(file_path, filename)
                 
                 if not chunks:
-                    print(f" ⚠️ No content extracted from {filename}")
+                    print(f" [FAIL] No content extracted from {filename}")
                     stats['failed_files'] += 1
                     continue
                 
-                print(f" ✓ Extracted {len(chunks)} chunks")
+                print(f"[OK] Extracted {len(chunks)} chunks")
                 all_chunks.extend(chunks)
                 stats['processed_files'] += 1
                 
             except Exception as e:
-                print(f" ❌ Error processing {filename}: {e}")
+                print(f"[FAIL] Error processing {filename}: {e}")
                 stats['failed_files'] += 1
 
         if not all_chunks:
-            print("\n⚠️ No chunks to embed")
+            print("\n[FAIL] No chunks to embed")
             return stats
 
         # 3. Create Embeddings & Save
-        print(f"\n🔮 Embedding {len(all_chunks)} chunks...")
+        print(f"\n[INFO] Embedding {len(all_chunks)} chunks...")
         embedded_chunks = self._embed_chunks_batch(all_chunks, user_id, db)
         
         stats['total_chunks'] = len(embedded_chunks)
@@ -165,7 +165,7 @@ class RAGMatcher:
 
         elapsed_time = time.time() - start_time
         print(f"\n{'='*70}")
-        print(f"✅ INGESTION COMPLETE in {elapsed_time:.2f}s")
+        print(f"[OK] INGESTION COMPLETE in {elapsed_time:.2f}s")
         print(f" Cost: ${stats['cost']:.6f}")
         print(f"{'='*70}\n")
         
@@ -180,10 +180,10 @@ class RAGMatcher:
         
         # 1. Quick Validation
         if not os.path.exists(file_path):
-            print(f" ❌ Error: File not found: {file_path}")
+            print(f"[FAIL] Error: File not found: {file_path}")
             return []
         if os.path.getsize(file_path) == 0:
-            print(f" ⚠️ Warning: Skipping empty file: {filename}")
+            print(f"[INFO] Warning: Skipping empty file: {filename}")
             return []
 
         try:
@@ -193,7 +193,7 @@ class RAGMatcher:
 
             # 3. Process the output
             if not pages_dict:
-                print(f" ⚠️ No content extracted from {filename}")
+                print(f"[INFO] No content extracted from {filename}")
                 return []
 
             for page_num, page_text in pages_dict.items():
@@ -225,7 +225,7 @@ class RAGMatcher:
                             })
                         else:
                             # Table too large, split by rows
-                            print(f"  ⚠️  Large table on page {page_num}, splitting by rows")
+                            print(f"[INFO]  Large table on page {page_num}, splitting by rows")
                             sub_chunks = self._chunk_large_markdown_table(table_chunk)
                             for j, sub_chunk in enumerate(sub_chunks):
                                 chunks.append({
@@ -273,7 +273,7 @@ class RAGMatcher:
                         })
         
         except Exception as e:
-            print(f"  ❌ Extraction error for {filename}: {e}")
+            print(f"[FAIL] Extraction error for {filename}: {e}")
             import traceback
             traceback.print_exc()
             return []
@@ -413,7 +413,7 @@ class RAGMatcher:
                 saved_chunks.extend(db_chunks)
                 
             except Exception as e:
-                print(f" ❌ Embedding batch failed: {e}")
+                print(f"[FAIL] Embedding batch failed: {e}")
                 db.rollback()
 
         return saved_chunks
@@ -431,7 +431,7 @@ class RAGMatcher:
         3. Verifies match with LLM.
         """
         print(f"\n{'='*70}")
-        print(f"🔍 HYBRID MATCHING: {len(requirements)} REQUIREMENTS")
+        print(f"[INFO] HYBRID MATCHING: {len(requirements)} REQUIREMENTS")
         print(f"{'='*70}")
         
         results = []
@@ -454,6 +454,31 @@ class RAGMatcher:
                     'context': reqcontext,
                     'criticality': reqcriticality
                 }
+
+            # ──────────────────────────────────────────────────────────────────
+            # Skip RAG for unresolved external-ATC documents
+            # ──────────────────────────────────────────────────────────────────
+            # When ATC auto-download failed, these docs have stub description
+            # "ATC section not found". Sending them through the embedding +
+            # RAG pipeline produces a meaningless high-confidence match because
+            # the vector for "ATC section not found" matches anything containing
+            # "ATC" or "section". Return a Review Needed result immediately.
+            # ──────────────────────────────────────────────────────────────────
+            if full_requirement.get("is_external_atc_required", False):
+                print(f"  [{idx}/{len(requirements)}] {reqname} → [INFO] ATC Pending (skipped RAG)")
+                results.append({
+                    "Required Document": reqname,
+                    "Status": "⚠️ Review Needed",
+                    "Matched File": "N/A",
+                    "Confidence Score": "0.0",
+                    "Description": (
+                        reqcontext
+                        or "External ATC document required. "
+                           "Upload the ATC file via Re-Analyze to resolve."
+                    ),
+                    "pending_atc": True,
+                })
+                continue   # ← skips try block, goes to next requirement
             
             print(f"  [{idx}/{len(requirements)}] {reqname}")
             
@@ -468,7 +493,7 @@ class RAGMatcher:
                     DocumentChunk.user_id == user_id
                 ).order_by(
                     DocumentChunk.embedding.l2_distance(query_vector)
-                ).limit(5).all()
+                ).limit(config.RAG_TOP_K_CHUNKS).all()
                 
                 if not top_chunks:
                     results.append(self._create_missing_result(reqname, reqcontext, reqcriticality))
@@ -479,32 +504,31 @@ class RAGMatcher:
                 chunk_filenames = [chunk.source_filename for chunk in top_chunks]
                 
                 # Use ComplianceValidator if available
-                if self.validator and full_requirement.get('validation_type') != 'document_existence':
-                    print(f"    → Using validation for {full_requirement.get('validation_type')}")
-                    
+                # Use ComplianceValidator for ALL requirement types including document_existence.
+                # evidence window to be used for most documents. Now all go through deep validation.
+                if self.validator:
+                    print(f"  → Using ComplianceValidator for {full_requirement.get('validation_type', 'document_existence')}")
                     validation_result = self.validator.validate_requirement(
                         requirement=full_requirement,
                         document_chunks=chunk_texts,
                         filenames=chunk_filenames
                     )
-                    
-                    # Convert validation result to match result format
                     result = self._convert_validation_to_result(
-                        validation_result, 
-                        reqname, 
-                        reqcontext, 
+                        validation_result,
+                        reqname,
+                        reqcontext,
                         reqcriticality,
                         chunk_filenames
                     )
-                
-                # Fallback to LLM verification
+
+                # Fallback to LLM verification if validator not available
                 elif self.llm_available:
                     result = self._llm_verify_match(reqname, reqcontext, reqcriticality, top_chunks)
-                
+
                 # Last resort: distance-based matching
                 else:
                     result = self.distance_based_match(
-                        reqname, reqcontext, reqcriticality, 
+                        reqname, reqcontext, reqcriticality,
                         top_chunks[0], query_vector, db
                     )
                 
@@ -512,11 +536,11 @@ class RAGMatcher:
                 results.append(result)
             
             except Exception as e:
-                print(f"  ✗ Error: {e}")
+                print(f"  [FAIL] Error: {e}")
                 results.append(self._create_missing_result(reqname, reqcontext, reqcriticality, str(e)))
 
         elapsed = time.time() - query_start_time
-        print(f"\n✅ MATCHING COMPLETE in {elapsed:.2f}s")
+        print(f"\n[OK] MATCHING COMPLETE in {elapsed:.2f}s")
         return results
 
     def _build_semantic_search_query(self, req_name: str, req_context: str) -> str:
@@ -570,7 +594,7 @@ class RAGMatcher:
         evidence_text = ""
         for i, chunk in enumerate(chunks[:3], 1): # Look at top 3 chunks
             evidence_text += f"\n--- [File: {chunk.source_filename} | Page: {chunk.page_number}] ---\n"
-            evidence_text += chunk.content[:800] # Truncate to save tokens
+            evidence_text += chunk.content[:1400] # Truncate to save tokens
             evidence_text += "\n"
 
         prompt = f"""

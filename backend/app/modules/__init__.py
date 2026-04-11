@@ -3,7 +3,7 @@ RFP Compliance Checker Modules
 """
 
 from .pdf_extractor import PDFExtractor
-from .list_extractor import ListExtractor
+from .docling_extractor import DoclingExtractor
 from .document_matcher import DocumentMatcher
 from .utils import (
     save_uploaded_file,
@@ -15,7 +15,7 @@ from .utils import (
 
 __all__ = [
     'PDFExtractor',
-    'ListExtractor',
+    'DoclingExtractor',
     'DocumentMatcher',
     'save_uploaded_file',
     'validate_file_extension',

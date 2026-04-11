@@ -40,6 +40,7 @@ class AnalysisHistory(Base):
     completion_rate = Column(Float, nullable=False)
     api_cost = Column(Float, default=0.0)
     results_json = Column(Text, nullable=True)
+    rfp_file_path = Column(String(1000), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     user = relationship("User", back_populates="history")

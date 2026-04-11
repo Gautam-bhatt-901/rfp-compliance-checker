@@ -40,6 +40,7 @@ class DocumentMatch(BaseModel):
     confidence_score: Optional[float] = None
     details: Optional[str] = None
     description: Optional[str] = ""
+    pending_atc: bool = False  
 
 class AnalysisResult(BaseModel):
     total: int
@@ -88,6 +89,10 @@ class RFPAnalysisResult(BaseModel):
     completion_rate: float
     matches: List[DocumentMatch]
     extraction_cost: float
+    has_external_atc: bool = False            
+    external_atc_warning: Optional[str] = None
+    atc_document_url: Optional[str] = None   
+    analysis_id: Optional[int] = None        
 
 class BatchAnalysisResult(BaseModel):
     """Results for multiple RFPs analyzed together"""

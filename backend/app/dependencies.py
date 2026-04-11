@@ -3,7 +3,7 @@ Shared dependencies for FastAPI routes
 """
 from functools import lru_cache
 from app.modules.pdf_extractor import PDFExtractor
-from app.modules.list_extractor import ListExtractor
+from app.modules.docling_extractor import DoclingExtractor
 from app.modules.document_matcher import DocumentMatcher
 from app.modules.rag_matcher import RAGMatcher
 from app import config
@@ -18,7 +18,7 @@ def get_pdf_extractor():
 @lru_cache()
 def get_list_extractor():
     """Singleton list extractor"""
-    return ListExtractor()
+    return DoclingExtractor()
 
 
 @lru_cache()
