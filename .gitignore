@@ -289,3 +289,4 @@ cython_debug/
 backend_backup.zip
 backend/extraction_tests/
 backend/test_extraction.py
+stitch_ai_rfp_compliance_platform

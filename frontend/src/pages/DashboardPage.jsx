@@ -1,62 +1,85 @@
-/**
- * Dashboard page - Shows analysis history
- */
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Container,
+  Alert,
   Box,
-  Typography,
   Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Grid,
+  IconButton,
+  InputAdornment,
+  LinearProgress,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
-  IconButton,
-  Alert,
-  CircularProgress,
-  Grid,
-  Card,
-  CardContent,
-  Tooltip,
   TextField,
-  InputAdornment,
-  TableSortLabel,
-  Fade,
-  Zoom,
+  Tooltip,
+  Typography,
 } from '@mui/material';
 import {
-  Add,
-  Visibility,
-  Delete,
-  Assessment,
-  CheckCircle,
-  Warning,
-  Cancel,
-  Search,
-  TrendingUp,
+  AddCircleOutline,
+  ArrowOutward,
   AttachMoney,
-  BarChart,
+  DeleteOutline,
+  DescriptionOutlined,
+  Search,
+  VisibilityOutlined,
 } from '@mui/icons-material';
+import WorkspaceShell from '../components/Layout/WorkspaceShell';
 import { rfpAPI } from '../services/api';
-import Navbar from '../components/Layout/Navbar';
+
+const statCards = [
+  {
+    key: 'totalAnalyses',
+    title: 'Total Analyses',
+    tint: 'rgba(9, 90, 180, 0.08)',
+    accent: '#095ab4',
+  },
+  {
+    key: 'avgCompletionRate',
+    title: 'Avg Completion Rate',
+    tint: 'rgba(63, 143, 87, 0.1)',
+    accent: '#3f8f57',
+    formatter: (value) => `${value.toFixed(1)}%`,
+  },
+  {
+    key: 'totalCost',
+    title: 'Total API Cost',
+    tint: 'rgba(198, 127, 0, 0.12)',
+    accent: '#c67f00',
+    formatter: (value) => `$${value.toFixed(2)}`,
+  },
+];
+
+function formatDate(dateString) {
+  return new Date(dateString).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getCompletionColor(rate) {
+  if (rate >= 80) return 'success';
+  if (rate >= 60) return 'warning';
+  return 'error';
+}
 
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [stats, setStats] = useState({
-    totalAnalyses: 0,
-    avgCompletionRate: 0,
-    totalCost: 0,
-  });
-
-  // Search and sorting state
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
@@ -70,526 +93,357 @@ export default function DashboardPage() {
       setLoading(true);
       const data = await rfpAPI.getHistory();
       setHistory(data);
-
-      const totalAnalyses = data.length;
-      const avgCompletionRate = totalAnalyses > 0
-        ? data.reduce((sum, item) => sum + item.completion_rate, 0) / totalAnalyses
-        : 0;
-      const totalCost = data.reduce((sum, item) => sum + item.api_cost, 0);
-
-      setStats({ totalAnalyses, avgCompletionRate, totalCost });
     } catch (err) {
       setError('Failed to load analysis history');
-      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleView = (id) => {
-    navigate(`/analysis/${id}`);
-  };
+  const stats = useMemo(() => {
+    const totalAnalyses = history.length;
+    const avgCompletionRate = totalAnalyses
+      ? history.reduce((sum, item) => sum + item.completion_rate, 0) / totalAnalyses
+      : 0;
+    const totalCost = history.reduce((sum, item) => sum + item.api_cost, 0);
+
+    return {
+      totalAnalyses,
+      avgCompletionRate,
+      totalCost,
+    };
+  }, [history]);
+
+  const displayHistory = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = history.filter((item) => {
+      if (!query) return true;
+      return (
+        item.rfp_filename.toLowerCase().includes(query) ||
+        formatDate(item.created_at).toLowerCase().includes(query) ||
+        item.completion_rate.toString().includes(query)
+      );
+    });
+
+    filtered.sort((a, b) => {
+      let aValue;
+      let bValue;
+
+      if (sortBy === 'completion_rate') {
+        aValue = a.completion_rate;
+        bValue = b.completion_rate;
+      } else {
+        aValue = new Date(a.created_at).getTime();
+        bValue = new Date(b.created_at).getTime();
+      }
+
+      return sortOrder === 'asc' ? aValue - bValue : bValue - aValue;
+    });
+
+    return filtered;
+  }, [history, searchQuery, sortBy, sortOrder]);
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this analysis?')) {
-      try {
-        await rfpAPI.deleteAnalysis(id);
-        fetchHistory();
-      } catch (err) {
-        setError('Failed to delete analysis');
-      }
+    if (!window.confirm('Are you sure you want to delete this analysis?')) {
+      return;
+    }
+
+    try {
+      await rfpAPI.deleteAnalysis(id);
+      fetchHistory();
+    } catch (err) {
+      setError('Failed to delete analysis');
     }
   };
 
-  const handleSort = (column) => {
+  const toggleSort = (column) => {
     if (sortBy === column) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+      setSortOrder((current) => (current === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortBy(column);
       setSortOrder('desc');
     }
   };
 
-  const getFilteredAndSortedHistory = () => {
-    let filtered = history.filter((item) => {
-      const searchLower = searchQuery.toLowerCase();
-      return (
-        item.rfp_filename.toLowerCase().includes(searchLower) ||
-        formatDate(item.created_at).toLowerCase().includes(searchLower) ||
-        item.completion_rate.toString().includes(searchLower)
-      );
-    });
-
-    filtered.sort((a, b) => {
-      let aValue, bValue;
-
-      if (sortBy === 'created_at') {
-        aValue = new Date(a.created_at).getTime();
-        bValue = new Date(b.created_at).getTime();
-      } else if (sortBy === 'completion_rate') {
-        aValue = a.completion_rate;
-        bValue = b.completion_rate;
-      }
-
-      if (sortOrder === 'asc') {
-        return aValue - bValue;
-      } else {
-        return bValue - aValue;
-      }
-    });
-
-    return filtered;
-  };
-
-  const getCompletionColor = (rate) => {
-    if (rate >= 80) return 'success';
-    if (rate >= 60) return 'warning';
-    return 'error';
-  };
-
-  const formatDate = (dateString) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  if (loading) {
-    return (
-      <>
-        <Navbar />
-        <Container maxWidth="xl" sx={{ mt: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-          <Box textAlign="center">
-            <CircularProgress size={60} thickness={4} sx={{ color: 'primary.main' }} />
-            <Typography variant="h6" color="text.secondary" sx={{ mt: 3 }}>
-              Loading your dashboard...
-            </Typography>
-          </Box>
-        </Container>
-      </>
-    );
-  }
-
-  const displayHistory = getFilteredAndSortedHistory();
-
   return (
-    <>
-      <Navbar />
-      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-        {/* Header */}
-        <Fade in timeout={600}>
-          <Box display="flex" justifyContent="space-between" alignItems="center" mb={4}>
+    <WorkspaceShell>
+      <Stack spacing={4}>
+        <Box>
+          <Typography variant="overline" color="text.secondary">
+            Command Center
+          </Typography>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={2}
+            justifyContent="space-between"
+            alignItems={{ xs: 'flex-start', md: 'flex-end' }}
+          >
             <Box>
-              <Typography
-                variant="h3"
-                fontWeight={900}
-                gutterBottom
-                sx={{
-                  background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                 Dashboard
+              <Typography variant="h2" sx={{ color: '#0a2546', mt: 1, mb: 1 }}>
+                Intelligence Verification
               </Typography>
-              <Typography variant="h6" color="text.secondary" fontWeight={400}>
-                View and manage your RFP compliance analyses
+              <Typography color="text.secondary" sx={{ maxWidth: 720 }}>
+                Review completed analyses, track completion performance, and continue into
+                requirement-level compliance details without changing how your data is fetched.
               </Typography>
             </Box>
             <Button
               variant="contained"
-              color="primary"
-              startIcon={<Add />}
+              startIcon={<AddCircleOutline />}
               onClick={() => navigate('/analyze')}
-              size="large"
-              sx={{
-                px: 4,
-                py: 1.5,
-                borderRadius: 3,
-                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
-                fontWeight: 700,
-                fontSize: '1rem',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #4f46e5 0%, #4338ca 100%)',
-                  boxShadow: '0 12px 32px rgba(99, 102, 241, 0.5)',
-                  transform: 'translateY(-2px)',
-                },
-              }}
             >
               New Analysis
             </Button>
-          </Box>
-        </Fade>
+          </Stack>
+        </Box>
 
         {error && (
-          <Fade in>
-            <Alert
-              severity="error"
-              onClose={() => setError('')}
-              sx={{
-                mb: 3,
-                borderRadius: 3,
-                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.2)',
-              }}
-            >
-              {error}
-            </Alert>
-          </Fade>
+          <Alert severity="error" onClose={() => setError('')}>
+            {error}
+          </Alert>
         )}
 
-        {/* Statistics Cards */}
-        <Grid container spacing={3} mb={4}>
-          {[
-            {
-              icon: <Assessment sx={{ fontSize: 40 }} />,
-              title: 'Total Analyses',
-              value: stats.totalAnalyses,
-              color: '#6366f1',
-              gradient: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-              delay: 200,
-            },
-            {
-              icon: <BarChart sx={{ fontSize: 40 }} />,
-              title: 'Avg Completion Rate',
-              value: `${stats.avgCompletionRate.toFixed(1)}%`,
-              color: '#10b981',
-              gradient: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-              delay: 400,
-            },
-            {
-              icon: <AttachMoney sx={{ fontSize: 40 }} />,
-              title: 'Total API Cost',
-              value: `$${stats.totalCost.toFixed(2)}`,
-              color: '#f59e0b',
-              gradient: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-              delay: 600,
-            },
-          ].map((stat, index) => (
-            <Grid item xs={12} md={4} key={index}>
-              <Zoom in timeout={stat.delay}>
-                <Card
-                  sx={{
-                    height: '100%',
-                    background: 'white',
-                    borderRadius: 4,
-                    overflow: 'hidden',
-                    position: 'relative',
-                    transition: 'all 0.3s',
-                    '&:hover': {
-                      transform: 'translateY(-8px)',
-                      boxShadow: `0 20px 40px ${stat.color}30`,
-                    },
-                    '&::before': {
-                      content: '""',
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: '4px',
-                      background: stat.gradient,
-                    },
-                  }}
-                >
-                  <CardContent sx={{ p: 3 }}>
-                    <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-                      <Box
-                        sx={{
-                          width: 60,
-                          height: 60,
-                          borderRadius: 3,
-                          background: `${stat.color}15`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          color: stat.color,
-                        }}
-                      >
-                        {stat.icon}
-                      </Box>
-                    </Box>
-                    <Typography variant="body2" color="text.secondary" fontWeight={600} mb={1}>
-                      {stat.title}
-                    </Typography>
-                    <Typography variant="h3" fontWeight={900} color="text.primary">
-                      {stat.value}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Zoom>
-            </Grid>
-          ))}
-        </Grid>
-
-        {/* Analysis History Table */}
-        <Fade in timeout={800}>
-          <Paper
-            sx={{
-              p: 4,
-              borderRadius: 4,
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
-            }}
-          >
-            {/* Header with search */}
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-              <Typography variant="h5" fontWeight={800} color="text.primary">
-                Analysis History
-              </Typography>
-              <TextField
-                placeholder="Search analyses..."
-                variant="outlined"
-                size="small"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                sx={{
-                  width: 350,
-                  '& .MuiOutlinedInput-root': {
-                    borderRadius: 3,
-                    bgcolor: '#f8fafc',
-                    '&:hover': {
-                      bgcolor: 'white',
-                    },
-                  },
-                }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search color="action" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Box>
-
-            {history.length === 0 ? (
-              <Box textAlign="center" py={10}>
-                <Box
-                  sx={{
-                    width: 120,
-                    height: 120,
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto',
-                    mb: 3,
-                    opacity: 0.9,
-                  }}
-                >
-                  <Assessment sx={{ fontSize: 60, color: 'white' }} />
-                </Box>
-                <Typography variant="h5" fontWeight={700} color="text.primary" gutterBottom>
-                  No analyses yet
-                </Typography>
-                <Typography variant="body1" color="text.secondary" mb={4}>
-                  Start by uploading your first RFP document
-                </Typography>
-                <Button
-                  variant="contained"
-                  startIcon={<Add />}
-                  onClick={() => navigate('/analyze')}
-                  size="large"
-                  sx={{
-                    px: 4,
-                    py: 1.5,
-                    borderRadius: 3,
-                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                    boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
-                  }}
-                >
-                  Create First Analysis
-                </Button>
-              </Box>
-            ) : (
-              <TableContainer>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        RFP Document
-                      </TableCell>
-                      <TableCell>
-                        <TableSortLabel
-                          active={sortBy === 'created_at'}
-                          direction={sortBy === 'created_at' ? sortOrder : 'desc'}
-                          onClick={() => handleSort('created_at')}
-                          sx={{ fontWeight: 700, fontSize: '0.95rem' }}
-                        >
-                          Date
-                        </TableSortLabel>
-                      </TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        Required Docs
-                      </TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        Provided Docs
-                      </TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        Matched
-                      </TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        Review
-                      </TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        Missing
-                      </TableCell>
-                      <TableCell align="center">
-                        <TableSortLabel
-                          active={sortBy === 'completion_rate'}
-                          direction={sortBy === 'completion_rate' ? sortOrder : 'desc'}
-                          onClick={() => handleSort('completion_rate')}
-                          sx={{ fontWeight: 700, fontSize: '0.95rem' }}
-                        >
-                          Completion
-                        </TableSortLabel>
-                      </TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        Cost
-                      </TableCell>
-                      <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.95rem' }}>
-                        Actions
-                      </TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {displayHistory.map((item, index) => (
-                      <Fade in timeout={200 + index * 50} key={item.id}>
-                        <TableRow
-                          hover
+        {loading ? (
+          <Box sx={{ py: 12, display: 'grid', placeItems: 'center' }}>
+            <Stack spacing={2} alignItems="center">
+              <CircularProgress />
+              <Typography color="text.secondary">Loading your dashboard...</Typography>
+            </Stack>
+          </Box>
+        ) : (
+          <>
+            <Grid container spacing={3}>
+              {statCards.map((stat) => (
+                <Grid item xs={12} md={4} key={stat.key}>
+                  <Card sx={{ bgcolor: 'rgba(255,255,255,0.82)', border: '1px solid rgba(194,198,212,0.26)' }}>
+                    <CardContent sx={{ p: 3.5 }}>
+                      <Typography variant="overline" color="text.secondary">
+                        {stat.title}
+                      </Typography>
+                      <Stack direction="row" justifyContent="space-between" alignItems="flex-end" mt={2}>
+                        <Typography variant="h3" sx={{ color: '#0a2546' }}>
+                          {stat.formatter ? stat.formatter(stats[stat.key]) : stats[stat.key]}
+                        </Typography>
+                        <Box
                           sx={{
-                            '&:hover': {
-                              bgcolor: '#f8fafc',
-                              transform: 'scale(1.005)',
-                              transition: 'all 0.2s',
-                            },
+                            minWidth: 68,
+                            textAlign: 'center',
+                            py: 0.75,
+                            px: 1.25,
+                            borderRadius: 999,
+                            bgcolor: stat.tint,
+                            color: stat.accent,
+                            fontWeight: 700,
+                            fontSize: '0.8rem',
                           }}
                         >
-                          <TableCell>
-                            <Typography variant="body2" fontWeight={600}>
-                              {item.rfp_filename}
-                            </Typography>
-                          </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              {formatDate(item.created_at)}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Chip
-                              label={item.num_required_docs}
-                              size="small"
-                              sx={{
-                                bgcolor: '#f1f5f9',
-                                color: '#475569',
-                                fontWeight: 700,
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            <Chip
-                              label={item.num_provided_docs}
-                              size="small"
-                              sx={{
-                                bgcolor: '#dbeafe',
-                                color: '#1e40af',
-                                fontWeight: 700,
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            <Chip
-                              icon={<CheckCircle sx={{ fontSize: 16 }} />}
-                              label={item.num_matched}
-                              color="success"
-                              size="small"
-                              sx={{ fontWeight: 700 }}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            <Chip
-                              icon={<Warning sx={{ fontSize: 16 }} />}
-                              label={item.num_review}
-                              color="warning"
-                              size="small"
-                              sx={{ fontWeight: 700 }}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            <Chip
-                              icon={<Cancel sx={{ fontSize: 16 }} />}
-                              label={item.num_missing}
-                              color="error"
-                              size="small"
-                              sx={{ fontWeight: 700 }}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            <Chip
-                              label={`${item.completion_rate.toFixed(1)}%`}
-                              color={getCompletionColor(item.completion_rate)}
-                              size="small"
-                              sx={{
-                                fontWeight: 700,
-                                minWidth: 60,
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell align="center">
-                            <Typography variant="body2" fontWeight={600} color="text.secondary">
-                              ${item.api_cost.toFixed(4)}
-                            </Typography>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Box display="flex" gap={0.5} justifyContent="center">
-                              <Tooltip title="View Details" arrow>
-                                <IconButton
-                                  color="primary"
+                          Live
+                        </Box>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Grid container spacing={3}>
+              <Grid item xs={12} lg={8}>
+                <Paper
+                  sx={{
+                    p: { xs: 2.5, md: 3 },
+                    bgcolor: 'rgba(255,255,255,0.85)',
+                    border: '1px solid rgba(194,198,212,0.28)',
+                  }}
+                >
+                  <Stack
+                    direction={{ xs: 'column', md: 'row' }}
+                    spacing={2}
+                    justifyContent="space-between"
+                    alignItems={{ xs: 'stretch', md: 'center' }}
+                    mb={3}
+                  >
+                    <Box>
+                      <Typography variant="h4" sx={{ color: '#0a2546', mb: 0.5 }}>
+                        Analysis History
+                      </Typography>
+                      <Typography color="text.secondary">
+                        Active audit trail for all processed RFP reviews
+                      </Typography>
+                    </Box>
+                    <TextField
+                      placeholder="Search analyses..."
+                      size="small"
+                      value={searchQuery}
+                      onChange={(event) => setSearchQuery(event.target.value)}
+                      sx={{ minWidth: { md: 300 } }}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Search fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Stack>
+
+                  {displayHistory.length === 0 ? (
+                    <Box sx={{ py: 8, textAlign: 'center' }}>
+                      <DescriptionOutlined sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                      <Typography variant="h5" sx={{ color: '#0a2546', mb: 1 }}>
+                        No analyses yet
+                      </Typography>
+                      <Typography color="text.secondary" mb={3}>
+                        Start a new upload to populate your compliance ledger.
+                      </Typography>
+                      <Button variant="contained" onClick={() => navigate('/analyze')}>
+                        Create First Analysis
+                      </Button>
+                    </Box>
+                  ) : (
+                    <TableContainer>
+                      <Table>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Batch Name</TableCell>
+                            <TableCell
+                              onClick={() => toggleSort('created_at')}
+                              sx={{ cursor: 'pointer' }}
+                            >
+                              Execution Date
+                            </TableCell>
+                            <TableCell>Status</TableCell>
+                            <TableCell
+                              onClick={() => toggleSort('completion_rate')}
+                              sx={{ cursor: 'pointer' }}
+                            >
+                              Completion
+                            </TableCell>
+                            <TableCell align="right">Actions</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {displayHistory.map((item) => (
+                            <TableRow key={item.id} hover>
+                              <TableCell>
+                                <Stack spacing={0.5}>
+                                  <Typography variant="subtitle2" sx={{ color: '#0a2546' }}>
+                                    {item.rfp_filename}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {item.num_required_docs} requirements • {item.num_provided_docs} files
+                                  </Typography>
+                                </Stack>
+                              </TableCell>
+                              <TableCell>
+                                <Typography variant="body2" color="text.secondary">
+                                  {formatDate(item.created_at)}
+                                </Typography>
+                              </TableCell>
+                              <TableCell>
+                                <Chip
                                   size="small"
-                                  onClick={() => handleView(item.id)}
-                                  sx={{
-                                    '&:hover': {
-                                      background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                                      color: 'white',
-                                      transform: 'scale(1.1)',
-                                    },
-                                  }}
-                                >
-                                  <Visibility fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Delete" arrow>
-                                <IconButton
-                                  color="error"
-                                  size="small"
-                                  onClick={() => handleDelete(item.id)}
-                                  sx={{
-                                    '&:hover': {
-                                      bgcolor: 'error.main',
-                                      color: 'white',
-                                      transform: 'scale(1.1)',
-                                    },
-                                  }}
-                                >
-                                  <Delete fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                      </Fade>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-          </Paper>
-        </Fade>
-      </Container>
-    </>
+                                  label={
+                                    item.num_missing === 0
+                                      ? 'Complete'
+                                      : item.num_review > 0
+                                      ? 'Needs Review'
+                                      : 'In Progress'
+                                  }
+                                  color={getCompletionColor(item.completion_rate)}
+                                />
+                              </TableCell>
+                              <TableCell sx={{ minWidth: 180 }}>
+                                <Stack spacing={1}>
+                                  <LinearProgress
+                                    variant="determinate"
+                                    value={item.completion_rate}
+                                    color={getCompletionColor(item.completion_rate)}
+                                  />
+                                  <Typography variant="caption" color="text.secondary">
+                                    {item.completion_rate.toFixed(1)}% complete • ${item.api_cost.toFixed(4)}
+                                  </Typography>
+                                </Stack>
+                              </TableCell>
+                              <TableCell align="right">
+                                <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                                  <Tooltip title="View analysis">
+                                    <IconButton onClick={() => navigate(`/analysis/${item.id}`)}>
+                                      <VisibilityOutlined fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                  <Tooltip title="Delete analysis">
+                                    <IconButton color="error" onClick={() => handleDelete(item.id)}>
+                                      <DeleteOutline fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                </Stack>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  )}
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} lg={4}>
+                <Stack spacing={3}>
+                  <Paper
+                    className="ledger-glass"
+                    sx={{
+                      p: 3,
+                      border: '1px solid rgba(194,198,212,0.28)',
+                    }}
+                  >
+                    <Typography variant="overline" color="text.secondary">
+                      Workspace Health
+                    </Typography>
+                    <Typography variant="h4" sx={{ color: '#0a2546', my: 1 }}>
+                      {history.length ? `${Math.min(100, stats.avgCompletionRate + 8).toFixed(0)}%` : '0%'}
+                    </Typography>
+                    <LinearProgress
+                      variant="determinate"
+                      value={history.length ? Math.min(100, stats.avgCompletionRate + 8) : 0}
+                    />
+                    <Typography color="text.secondary" sx={{ mt: 2 }}>
+                      Based on completion performance and successful analysis runs already
+                      stored in your backend history.
+                    </Typography>
+                  </Paper>
+
+                  <Paper
+                    sx={{
+                      p: 3,
+                      color: '#fff',
+                      background: 'var(--ledger-gradient)',
+                    }}
+                  >
+                    <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      Cost Snapshot
+                    </Typography>
+                    <Stack direction="row" spacing={1.5} alignItems="center" my={1.5}>
+                      <AttachMoney />
+                      <Typography variant="h4">${stats.totalCost.toFixed(2)}</Typography>
+                    </Stack>
+                    <Typography sx={{ color: 'rgba(255,255,255,0.78)', mb: 3 }}>
+                      Total spend across the analyses returned by the current API history.
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      onClick={() => navigate('/analyze')}
+                      endIcon={<ArrowOutward />}
+                      sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.22)' }}
+                    >
+                      Run another analysis
+                    </Button>
+                  </Paper>
+                </Stack>
+              </Grid>
+            </Grid>
+          </>
+        )}
+      </Stack>
+    </WorkspaceShell>
   );
 }

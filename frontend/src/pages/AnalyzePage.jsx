@@ -1,79 +1,91 @@
-/**
- * Analysis page - Upload and analyze MULTIPLE RFPs
- */
-import React, { useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Container,
-  Box,
-  Paper,
-  Typography,
-  Button,
-  Grid,
   Alert,
-  LinearProgress,
+  Box,
+  Button,
   Card,
-  CardContent,
+  Chip,
+  Divider,
+  Grid,
+  LinearProgress,
+  Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Divider,
-  Fade,
-  Zoom,
+  Typography,
 } from '@mui/material';
 import {
-  CloudUpload,
-  Description,
-  CheckCircle,
-  InsertDriveFile,
-  ExpandMore,
+  AutoAwesome,
+  CloudUploadOutlined,
+  DeleteOutline,
+  DescriptionOutlined,
   Download,
-  TrendingUp,
-  Warning,
-  Cancel,
+  FolderOpenOutlined,
+  InsertDriveFileOutlined,
 } from '@mui/icons-material';
+import WorkspaceShell from '../components/Layout/WorkspaceShell';
 import { rfpAPI } from '../services/api';
-import Navbar from '../components/Layout/Navbar';
+
+function formatBytes(bytes) {
+  if (!bytes && bytes !== 0) return 'Unknown';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function getStatusColor(status) {
+  if (status.includes('Present')) return 'success';
+  if (status.includes('Missing')) return 'error';
+  return 'warning';
+}
 
 export default function AnalyzePage() {
   const navigate = useNavigate();
+  const rfpInputRef = useRef(null);
+  const providedInputRef = useRef(null);
   const [rfpFiles, setRfpFiles] = useState([]);
   const [providedFiles, setProvidedFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [expandedDescriptions, setExpandedDescriptions] = useState({});
   const [results, setResults] = useState(null);
   const [error, setError] = useState('');
 
-  const toggleDescription = (rfpIndex, matchIndex) => {
-    const key = `${rfpIndex}-${matchIndex}`;
-    setExpandedDescriptions(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
-  };
+  const queue = useMemo(
+    () => [
+      ...rfpFiles.map((file) => ({ file, type: 'Primary RFP' })),
+      ...providedFiles.map((file) => ({ file, type: 'Evidence' })),
+    ],
+    [rfpFiles, providedFiles]
+  );
 
-  const handleRfpUpload = (e) => {
-    setRfpFiles(Array.from(e.target.files));
+  const totalMatches = results
+    ? results.rfp_results.reduce((sum, item) => sum + item.present, 0)
+    : 0;
+
+  const handleRfpUpload = (event) => {
+    setRfpFiles(Array.from(event.target.files));
     setResults(null);
     setError('');
   };
 
-  const handleProvidedFilesUpload = (e) => {
-    setProvidedFiles(Array.from(e.target.files));
+  const handleProvidedUpload = (event) => {
+    setProvidedFiles(Array.from(event.target.files));
     setResults(null);
     setError('');
+  };
+
+  const removeQueuedFile = (type, name) => {
+    if (type === 'Primary RFP') {
+      setRfpFiles((files) => files.filter((file) => file.name !== name));
+    } else {
+      setProvidedFiles((files) => files.filter((file) => file.name !== name));
+    }
+    setResults(null);
   };
 
   const handleAnalyze = async () => {
@@ -83,8 +95,8 @@ export default function AnalyzePage() {
     }
 
     setLoading(true);
-    setError('');
     setProgress(0);
+    setError('');
 
     try {
       const data = await rfpAPI.analyzeCompliance(rfpFiles, providedFiles, setProgress);
@@ -97,646 +109,474 @@ export default function AnalyzePage() {
     }
   };
 
-  const getStatusColor = (status) => {
-    if (status.includes('Present')) return 'success';
-    if (status.includes('Missing')) return 'error';
-    return 'warning';
-  };
-
   const downloadCSV = () => {
     if (!results || !results.rfp_results) return;
 
-    let csv = "RFP Filename,Required Document,Description,Status,Matched File\n";
-    results.rfp_results.forEach(rfpResult => {
-      rfpResult.matches.forEach(match => {
-        const description = (match.description || "").replace(/"/g, '""');
+    let csv = 'RFP Filename,Required Document,Description,Status,Matched File\n';
+    results.rfp_results.forEach((rfpResult) => {
+      rfpResult.matches.forEach((match) => {
+        const description = (match.description || '').replace(/"/g, '""');
         csv += `"${rfpResult.rfp_filename}","${match.required_document}","${description}","${match.status}","${match.matched_file}"\n`;
       });
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `batch_analysis_${results.batch_id}.csv`;
-    a.click();
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `batch_analysis_${results.batch_id}.csv`;
+    anchor.click();
   };
 
   const downloadSingleRfpCSV = (rfpResult) => {
-    const headers = ["Required Document", "Description", "Status", "Matched File"];
-    const rows = rfpResult.matches.map(m => {
-      const description = (m.description || "").replace(/"/g, '""');
-      return [`"${m.required_document}"`, `"${description}"`, `"${m.status}"`, `"${m.matched_file}"`];
+    const headers = ['Required Document', 'Description', 'Status', 'Matched File'];
+    const rows = rfpResult.matches.map((match) => {
+      const description = (match.description || '').replace(/"/g, '""');
+      return [`"${match.required_document}"`, `"${description}"`, `"${match.status}"`, `"${match.matched_file}"`];
     });
 
-    const csv = [headers.map(h => `"${h}"`).join(","), ...rows.map(row => row.join(","))].join("\n");
+    const csv = [headers.map((header) => `"${header}"`).join(','), ...rows.map((row) => row.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${rfpResult.rfp_filename.replace('.pdf', '')}_results.csv`;
-    a.click();
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${rfpResult.rfp_filename.replace('.pdf', '')}_results.csv`;
+    anchor.click();
   };
 
   return (
-    <>
-      <Navbar />
-      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-        {/* Header */}
-        <Fade in timeout={600}>
-          <Box mb={4}>
-            <Typography
-              variant="h3"
-              fontWeight={900}
-              gutterBottom
-              sx={{
-                background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                letterSpacing: '-0.02em',
-              }}
-            >
-               New RFP Analysis
-            </Typography>
-            <Typography variant="h6" color="text.secondary" fontWeight={400}>
-              Upload multiple RFP documents and supporting files to check compliance
-            </Typography>
-          </Box>
-        </Fade>
+    <WorkspaceShell>
+      <Stack spacing={4}>
+        <Box>
+          <Typography variant="overline" color="text.secondary">
+            Multi-RFP Command Center
+          </Typography>
+          <Typography variant="h2" sx={{ color: '#0a2546', mt: 1, mb: 1 }}>
+            Coordinate verification workstreams
+          </Typography>
+          <Typography color="text.secondary" sx={{ maxWidth: 760 }}>
+            Upload multiple RFP documents, add an evidence pool, and run the same
+            backend-powered compliance analysis through a cleaner command-center layout.
+          </Typography>
+        </Box>
 
         {error && (
-          <Fade in>
-            <Alert
-              severity="error"
-              onClose={() => setError('')}
-              sx={{
-                mb: 3,
-                borderRadius: 3,
-                boxShadow: '0 4px 12px rgba(239, 68, 68, 0.2)',
-              }}
-            >
-              {error}
-            </Alert>
-          </Fade>
+          <Alert severity="error" onClose={() => setError('')}>
+            {error}
+          </Alert>
         )}
 
-        {/* Upload Section */}
-        <Grid container spacing={3} mb={4}>
-          {/* RFP Files Upload */}
+        <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
-            <Zoom in timeout={400}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 4,
-                  borderRadius: 4,
-                  border: '3px dashed',
-                  borderColor: rfpFiles.length > 0 ? 'success.main' : '#e2e8f0',
-                  bgcolor: rfpFiles.length > 0 ? '#f0fdf4' : 'white',
-                  transition: 'all 0.3s',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  '&::before': rfpFiles.length > 0 ? {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: '4px',
-                    background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                  } : {},
-                }}
-              >
-                <Box textAlign="center">
+            <Paper
+              sx={{
+                p: 4,
+                minHeight: 300,
+                borderRadius: 6,
+                bgcolor: 'rgba(255,255,255,0.88)',
+                border: '1px solid rgba(194,198,212,0.3)',
+              }}
+            >
+              <Stack height="100%" justifyContent="space-between" spacing={3}>
+                <Box>
                   <Box
                     sx={{
-                      width: 80,
-                      height: 80,
+                      width: 68,
+                      height: 68,
                       borderRadius: '50%',
-                      background: rfpFiles.length > 0
-                        ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                        : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto',
+                      display: 'grid',
+                      placeItems: 'center',
+                      bgcolor: 'rgba(9, 90, 180, 0.08)',
+                      color: 'primary.main',
                       mb: 3,
-                      boxShadow: rfpFiles.length > 0
-                        ? '0 8px 24px rgba(16, 185, 129, 0.3)'
-                        : '0 8px 24px rgba(99, 102, 241, 0.3)',
                     }}
                   >
-                    {rfpFiles.length > 0 ? (
-                      <CheckCircle sx={{ fontSize: 40, color: 'white' }} />
-                    ) : (
-                      <CloudUpload sx={{ fontSize: 40, color: 'white' }} />
-                    )}
+                    <CloudUploadOutlined sx={{ fontSize: 34 }} />
                   </Box>
-
-                  <Typography variant="h6" fontWeight={700} gutterBottom>
-                    1️⃣ Upload RFP Documents
+                  <Typography variant="h4" sx={{ color: '#0a2546', mb: 1 }}>
+                    Upload RFP Documents
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" mb={3}>
-                    Select one or more RFP files (PDF, Word, Text, etc.)
+                  <Typography color="text.secondary">
+                    Select one or more solicitation files. Supported formats still follow the
+                    existing backend upload handling.
                   </Typography>
-
-                  <Button
-                    variant="contained"
-                    component="label"
-                    size="large"
-                    startIcon={<CloudUpload />}
-                    sx={{
-                      px: 4,
-                      py: 1.5,
-                      borderRadius: 3,
-                      background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                      boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
-                      fontWeight: 700,
-                    }}
-                  >
-                    Choose RFP Files
-                    <input
-                      type="file"
-                      hidden
-                      multiple
-                      accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
-                      onChange={handleRfpUpload}
-                    />
-                  </Button>
-
-                  {rfpFiles.length > 0 && (
-                    <Box mt={3}>
-                      <Chip
-                        icon={<CheckCircle />}
-                        label={`✓ Loaded: ${rfpFiles.length} RFP document(s)`}
-                        color="success"
-                        sx={{ fontWeight: 700, mb: 2 }}
-                      />
-                      <List dense>
-                        {rfpFiles.map((file, idx) => (
-                          <ListItem key={idx} sx={{ bgcolor: '#f8fafc', borderRadius: 2, mb: 0.5 }}>
-                            <ListItemIcon>
-                              <Description color="primary" />
-                            </ListItemIcon>
-                            <ListItemText
-                              primary={file.name}
-                              primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }}
-                            />
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Box>
-                  )}
                 </Box>
-              </Paper>
-            </Zoom>
+                <Box>
+                  <Button variant="contained" onClick={() => rfpInputRef.current?.click()}>
+                    Choose RFP Files
+                  </Button>
+                  <input
+                    ref={rfpInputRef}
+                    type="file"
+                    hidden
+                    multiple
+                    accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+                    onChange={handleRfpUpload}
+                  />
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                    {rfpFiles.length
+                      ? `${rfpFiles.length} RFP document(s) ready for analysis`
+                      : 'No RFP documents selected yet'}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Paper>
           </Grid>
 
-          {/* Supporting Documents Upload */}
           <Grid item xs={12} md={6}>
-            <Zoom in timeout={600}>
-              <Paper
-                elevation={0}
-                sx={{
-                  p: 4,
-                  borderRadius: 4,
-                  border: '3px dashed',
-                  borderColor: providedFiles.length > 0 ? 'success.main' : '#e2e8f0',
-                  bgcolor: providedFiles.length > 0 ? '#f0fdf4' : 'white',
-                  transition: 'all 0.3s',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  '&::before': providedFiles.length > 0 ? {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: '4px',
-                    background: 'linear-gradient(90deg, #10b981 0%, #059669 100%)',
-                  } : {},
-                }}
-              >
-                <Box textAlign="center">
+            <Paper
+              sx={{
+                p: 4,
+                minHeight: 300,
+                borderRadius: 6,
+                bgcolor: 'rgba(255,255,255,0.88)',
+                border: '1px solid rgba(194,198,212,0.3)',
+              }}
+            >
+              <Stack height="100%" justifyContent="space-between" spacing={3}>
+                <Box>
                   <Box
                     sx={{
-                      width: 80,
-                      height: 80,
+                      width: 68,
+                      height: 68,
                       borderRadius: '50%',
-                      background: providedFiles.length > 0
-                        ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-                        : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      margin: '0 auto',
+                      display: 'grid',
+                      placeItems: 'center',
+                      bgcolor: 'rgba(198, 127, 0, 0.12)',
+                      color: '#c67f00',
                       mb: 3,
-                      boxShadow: providedFiles.length > 0
-                        ? '0 8px 24px rgba(16, 185, 129, 0.3)'
-                        : '0 8px 24px rgba(99, 102, 241, 0.3)',
                     }}
                   >
-                    {providedFiles.length > 0 ? (
-                      <CheckCircle sx={{ fontSize: 40, color: 'white' }} />
-                    ) : (
-                      <InsertDriveFile sx={{ fontSize: 40, color: 'white' }} />
-                    )}
+                    <FolderOpenOutlined sx={{ fontSize: 34 }} />
                   </Box>
-
-                  <Typography variant="h6" fontWeight={700} gutterBottom>
-                    2️⃣ Upload Supporting Documents
+                  <Typography variant="h4" sx={{ color: '#0a2546', mb: 1 }}>
+                    Supporting Evidence Pool
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" mb={3}>
-                    Select multiple files to check against ALL RFPs
+                  <Typography color="text.secondary">
+                    Upload supporting documents once and use them across all selected RFPs in
+                    the same analysis run.
                   </Typography>
-
-                  <Button
-                    variant="contained"
-                    component="label"
-                    size="large"
-                    startIcon={<CloudUpload />}
-                    sx={{
-                      px: 4,
-                      py: 1.5,
-                      borderRadius: 3,
-                      background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                      boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
-                      fontWeight: 700,
-                    }}
-                  >
-                    Choose Documents
-                    <input
-                      type="file"
-                      hidden
-                      multiple
-                      accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
-                      onChange={handleProvidedFilesUpload}
-                    />
-                  </Button>
-
-                  {providedFiles.length > 0 && (
-                    <Box mt={3}>
-                      <Chip
-                        icon={<CheckCircle />}
-                        label={`✓ Loaded: ${providedFiles.length} document(s)`}
-                        color="success"
-                        sx={{ fontWeight: 700, mb: 2 }}
-                      />
-                      <List dense>
-                        {providedFiles.slice(0, 5).map((file, idx) => (
-                          <ListItem key={idx} sx={{ bgcolor: '#f8fafc', borderRadius: 2, mb: 0.5 }}>
-                            <ListItemIcon>
-                              <InsertDriveFile color="primary" />
-                            </ListItemIcon>
-                            <ListItemText
-                              primary={file.name}
-                              primaryTypographyProps={{ fontWeight: 600, fontSize: '0.9rem' }}
-                            />
-                          </ListItem>
-                        ))}
-                        {providedFiles.length > 5 && (
-                          <Typography variant="body2" color="text.secondary" textAlign="center" mt={1}>
-                            + {providedFiles.length - 5} more files
-                          </Typography>
-                        )}
-                      </List>
-                    </Box>
-                  )}
                 </Box>
-              </Paper>
-            </Zoom>
+                <Box>
+                  <Button variant="outlined" onClick={() => providedInputRef.current?.click()}>
+                    Choose Supporting Files
+                  </Button>
+                  <input
+                    ref={providedInputRef}
+                    type="file"
+                    hidden
+                    multiple
+                    accept=".pdf,.doc,.docx,.txt,.md,.rtf,.odt"
+                    onChange={handleProvidedUpload}
+                  />
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                    {providedFiles.length
+                      ? `${providedFiles.length} supporting file(s) loaded`
+                      : 'No supporting documents selected yet'}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Paper>
           </Grid>
         </Grid>
 
-        {/* Analyze Button */}
-        <Fade in timeout={800}>
-          <Box textAlign="center" mb={4}>
+        <Paper
+          sx={{
+            p: { xs: 2.5, md: 3 },
+            bgcolor: 'rgba(255,255,255,0.86)',
+            border: '1px solid rgba(194,198,212,0.28)',
+          }}
+        >
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            spacing={2}
+            justifyContent="space-between"
+            alignItems={{ xs: 'stretch', md: 'center' }}
+            mb={3}
+          >
+            <Box>
+              <Typography variant="h4" sx={{ color: '#0a2546', mb: 0.5 }}>
+                Active Analysis Queue
+              </Typography>
+              <Typography color="text.secondary">
+                {queue.length
+                  ? `${queue.length} file(s) staged for the next run`
+                  : 'Add RFPs and evidence files to begin'}
+              </Typography>
+            </Box>
             <Button
               variant="contained"
-              size="large"
+              startIcon={<AutoAwesome />}
               onClick={handleAnalyze}
               disabled={loading || rfpFiles.length === 0 || providedFiles.length === 0}
+            >
+              {loading ? 'Analyzing...' : 'Start AI Analysis'}
+            </Button>
+          </Stack>
+
+          {loading && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Processing {rfpFiles.length} RFP(s) against {providedFiles.length} document(s)...
+                {' '}{progress}%
+              </Typography>
+              <LinearProgress variant="determinate" value={progress} />
+            </Box>
+          )}
+
+          {queue.length === 0 ? (
+            <Box sx={{ py: 5, textAlign: 'center' }}>
+              <InsertDriveFileOutlined sx={{ fontSize: 46, color: 'text.secondary', mb: 2 }} />
+              <Typography color="text.secondary">
+                Your queued files will appear here once selected.
+              </Typography>
+            </Box>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>File Name</TableCell>
+                    <TableCell>Classification</TableCell>
+                    <TableCell>Size</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Action</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {queue.map(({ file, type }) => (
+                    <TableRow key={`${type}-${file.name}`} hover>
+                      <TableCell>
+                        <Stack direction="row" spacing={1.5} alignItems="center">
+                          <DescriptionOutlined fontSize="small" color="action" />
+                          <Typography variant="subtitle2" sx={{ color: '#0a2546' }}>
+                            {file.name}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={type}
+                          color={type === 'Primary RFP' ? 'info' : 'default'}
+                        />
+                      </TableCell>
+                      <TableCell>{formatBytes(file.size)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          size="small"
+                          label={loading ? 'Processing' : 'Ready'}
+                          color={loading ? 'warning' : 'success'}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          color="error"
+                          startIcon={<DeleteOutline />}
+                          onClick={() => removeQueuedFile(type, file.name)}
+                          disabled={loading}
+                        >
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </Paper>
+
+        {results && (
+          <Stack spacing={3}>
+            <Paper
               sx={{
-                px: 6,
-                py: 2,
-                fontSize: '1.2rem',
-                fontWeight: 800,
-                borderRadius: 3,
-                background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
-                boxShadow: '0 12px 40px rgba(99, 102, 241, 0.4)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #4f46e5 0%, #db2777 100%)',
-                  boxShadow: '0 16px 48px rgba(99, 102, 241, 0.5)',
-                  transform: 'translateY(-4px)',
-                },
-                '&:disabled': {
-                  background: '#e2e8f0',
-                  color: '#94a3b8',
-                },
+                p: { xs: 3, md: 4 },
+                color: '#fff',
+                background: 'var(--ledger-gradient)',
               }}
             >
-              {loading ? '🔄 Analyzing...' : '🔍 Analyze All RFPs'}
-            </Button>
+              <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={2}
+                justifyContent="space-between"
+                alignItems={{ xs: 'flex-start', md: 'center' }}
+                mb={3}
+              >
+                <Box>
+                  <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                    Batch Result
+                  </Typography>
+                  <Typography variant="h3" sx={{ color: '#fff', mb: 1 }}>
+                    Batch Analysis Results
+                  </Typography>
+                  <Typography sx={{ color: 'rgba(255,255,255,0.78)' }}>
+                    Batch ID: {results.batch_id}
+                  </Typography>
+                </Box>
+                <Button
+                  variant="outlined"
+                  startIcon={<Download />}
+                  onClick={downloadCSV}
+                  sx={{ color: '#fff', borderColor: 'rgba(255,255,255,0.24)' }}
+                >
+                  Download All Results
+                </Button>
+              </Stack>
 
-            {loading && (
-              <Box mt={3} maxWidth={600} mx="auto">
-                <Typography variant="body1" color="text.secondary" mb={2} fontWeight={600}>
-                  Processing {rfpFiles.length} RFP(s) against {providedFiles.length} document(s)... {progress}%
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={progress}
-                  sx={{
-                    height: 10,
-                    borderRadius: 5,
-                    bgcolor: '#e2e8f0',
-                    '& .MuiLinearProgress-bar': {
-                      background: 'linear-gradient(90deg, #6366f1 0%, #ec4899 100%)',
-                      borderRadius: 5,
-                    },
-                  }}
-                />
-              </Box>
-            )}
-          </Box>
-        </Fade>
+              <Grid container spacing={2}>
+                {[
+                  ['RFPs Analyzed', results.total_rfps],
+                  ['Documents Checked', providedFiles.length],
+                  ['Total Matches', totalMatches],
+                  ['API Cost', `$${results.total_cost.toFixed(4)}`],
+                ].map(([label, value]) => (
+                  <Grid item xs={12} sm={6} md={3} key={label}>
+                    <Paper
+                      sx={{
+                        p: 2.5,
+                        bgcolor: 'rgba(255,255,255,0.08)',
+                        color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                      }}
+                    >
+                      <Typography variant="overline" sx={{ color: 'rgba(255,255,255,0.65)' }}>
+                        {label}
+                      </Typography>
+                      <Typography variant="h4" sx={{ mt: 1 }}>
+                        {value}
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                ))}
+              </Grid>
+            </Paper>
 
-        {/* Results Section */}
-        {results && (
-          <Fade in timeout={1000}>
-            <Box>
+            {results.rfp_results.map((rfpResult, index) => (
               <Paper
+                key={`${rfpResult.rfp_filename}-${index}`}
                 sx={{
-                  p: 4,
-                  borderRadius: 4,
-                  mb: 4,
-                  background: 'linear-gradient(135deg, #6366f1 0%, #ec4899 100%)',
-                  color: 'white',
-                  boxShadow: '0 20px 60px rgba(99, 102, 241, 0.4)',
+                  p: { xs: 2.5, md: 3 },
+                  bgcolor: 'rgba(255,255,255,0.88)',
+                  border: '1px solid rgba(194,198,212,0.28)',
                 }}
               >
-                <Typography variant="h4" fontWeight={900} gutterBottom>
-                   Batch Analysis Results
-                </Typography>
-                <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                  Batch ID: {results.batch_id}
-                </Typography>
+                <Stack
+                  direction={{ xs: 'column', lg: 'row' }}
+                  spacing={2}
+                  justifyContent="space-between"
+                  alignItems={{ xs: 'flex-start', lg: 'center' }}
+                  mb={3}
+                >
+                  <Box>
+                    <Typography variant="h4" sx={{ color: '#0a2546', mb: 0.5 }}>
+                      {rfpResult.rfp_filename}
+                    </Typography>
+                    <Typography color="text.secondary">
+                      {rfpResult.total} required documents • {rfpResult.present} present •{' '}
+                      {rfpResult.review} review • {rfpResult.missing} missing
+                    </Typography>
+                  </Box>
+                  <Stack direction="row" spacing={1.5} alignItems="center">
+                    <Chip
+                      label={`${rfpResult.completion_rate.toFixed(1)}% complete`}
+                      color={
+                        rfpResult.completion_rate >= 80
+                          ? 'success'
+                          : rfpResult.completion_rate >= 60
+                          ? 'warning'
+                          : 'error'
+                      }
+                    />
+                    <Button
+                      variant="outlined"
+                      startIcon={<Download />}
+                      onClick={() => downloadSingleRfpCSV(rfpResult)}
+                    >
+                      Download CSV
+                    </Button>
+                  </Stack>
+                </Stack>
 
-                {/* Overall Stats */}
-                <Grid container spacing={3} mt={2}>
+                <Grid container spacing={2} mb={3}>
                   {[
-                    { label: 'RFPs Analyzed', value: results.total_rfps, icon: <Description /> },
-                    { label: 'Documents Checked', value: providedFiles.length, icon: <InsertDriveFile /> },
-                    { label: 'Total Matches', value: results.rfp_results.reduce((sum, r) => sum + r.present, 0), icon: <CheckCircle /> },
-                    { label: 'API Cost', value: `$${results.total_cost.toFixed(4)}`, icon: <TrendingUp /> },
-                  ].map((stat, idx) => (
-                    <Grid item xs={12} sm={6} md={3} key={idx}>
-                      <Box
-                        sx={{
-                          bgcolor: 'rgba(255, 255, 255, 0.2)',
-                          backdropFilter: 'blur(10px)',
-                          borderRadius: 3,
-                          p: 2.5,
-                          textAlign: 'center',
-                          border: '1px solid rgba(255, 255, 255, 0.3)',
-                        }}
-                      >
-                        <Box mb={1}>{stat.icon}</Box>
-                        <Typography variant="h4" fontWeight={900}>
-                          {stat.value}
-                        </Typography>
-                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                          {stat.label}
-                        </Typography>
-                      </Box>
+                    ['Required', rfpResult.total],
+                    ['Present', rfpResult.present],
+                    ['Review', rfpResult.review],
+                    ['Missing', rfpResult.missing],
+                  ].map(([label, value]) => (
+                    <Grid item xs={6} md={3} key={label}>
+                      <Card sx={{ bgcolor: 'rgba(242,243,251,0.8)' }}>
+                        <CardContent sx={{ p: 2.5 }}>
+                          <Typography variant="overline" color="text.secondary">
+                            {label}
+                          </Typography>
+                          <Typography variant="h4" sx={{ color: '#0a2546', mt: 1 }}>
+                            {value}
+                          </Typography>
+                        </CardContent>
+                      </Card>
                     </Grid>
                   ))}
                 </Grid>
 
-                {/* Download All Button */}
-                <Box mt={3}>
-                  <Button
-                    variant="contained"
-                    startIcon={<Download />}
-                    onClick={downloadCSV}
-                    sx={{
-                      bgcolor: 'white',
-                      color: '#6366f1',
-                      fontWeight: 700,
-                      px: 4,
-                      py: 1.5,
-                      '&:hover': {
-                        bgcolor: '#f8fafc',
-                      },
-                    }}
-                  >
-                    📥 Download All Results (CSV)
-                  </Button>
+                <Box sx={{ mb: 3 }}>
+                  <Stack direction="row" justifyContent="space-between" mb={1}>
+                    <Typography variant="body2" color="text.secondary">
+                      Completion Rate
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {rfpResult.completion_rate.toFixed(1)}%
+                    </Typography>
+                  </Stack>
+                  <LinearProgress variant="determinate" value={rfpResult.completion_rate} />
                 </Box>
-              </Paper>
 
-              {/* Individual RFP Results */}
-              <Typography variant="h5" fontWeight={800} mb={3} color="text.primary">
-                Individual RFP Results
-              </Typography>
-
-              {results.rfp_results.map((rfpResult, rfpIdx) => (
-                <Accordion
-                  key={rfpIdx}
-                  defaultExpanded={rfpIdx === 0}
-                  sx={{
-                    mb: 2,
-                    borderRadius: 3,
-                    '&:before': { display: 'none' },
-                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.08)',
-                  }}
-                >
-                  <AccordionSummary
-                    expandIcon={<ExpandMore />}
-                    sx={{
-                      bgcolor: '#f8fafc',
-                      borderRadius: 3,
-                      '&:hover': { bgcolor: '#f1f5f9' },
-                    }}
-                  >
-                    <Box display="flex" alignItems="center" gap={2} width="100%">
-                      <Description color="primary" />
-                      <Typography variant="h6" fontWeight={700} sx={{ flexGrow: 1 }}>
-                        {rfpResult.rfp_filename}
-                      </Typography>
-                      <Chip
-                        label={`${rfpResult.completion_rate.toFixed(1)}%`}
-                        color={
-                          rfpResult.completion_rate >= 80
-                            ? 'success'
-                            : rfpResult.completion_rate >= 60
-                            ? 'warning'
-                            : 'error'
-                        }
-                        size="small"
-                        sx={{ fontWeight: 700 }}
-                      />
-                    </Box>
-                  </AccordionSummary>
-
-                  <AccordionDetails sx={{ p: 3 }}>
-                    {/* Stats for this RFP */}
-                    <Grid container spacing={2} mb={3}>
-                      {[
-                        { label: 'Required', value: rfpResult.total, color: '#6366f1' },
-                        { label: '✅ Present', value: rfpResult.present, color: '#10b981' },
-                        { label: '⚠️ Review', value: rfpResult.review, color: '#f59e0b' },
-                        { label: '❌ Missing', value: rfpResult.missing, color: '#ef4444' },
-                      ].map((stat, idx) => (
-                        <Grid item xs={6} sm={3} key={idx}>
-                          <Box
-                            sx={{
-                              bgcolor: `${stat.color}10`,
-                              borderRadius: 2,
-                              p: 2,
-                              textAlign: 'center',
-                              border: `2px solid ${stat.color}30`,
-                            }}
-                          >
-                            <Typography variant="h5" fontWeight={800} color={stat.color}>
-                              {stat.value}
+                <TableContainer component={Paper} sx={{ border: '1px solid rgba(194,198,212,0.22)' }}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Required Document</TableCell>
+                        <TableCell>Description</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Matched File</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {rfpResult.matches.map((match, matchIndex) => (
+                        <TableRow key={`${rfpResult.rfp_filename}-${match.required_document}-${matchIndex}`} hover>
+                          <TableCell>
+                            <Typography variant="subtitle2" sx={{ color: '#0a2546' }}>
+                              {match.required_document}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary" fontWeight={600}>
-                              {stat.label}
-                            </Typography>
-                          </Box>
-                        </Grid>
+                          </TableCell>
+                          <TableCell>{match.description || 'No description available'}</TableCell>
+                          <TableCell>
+                            <Chip label={match.status} size="small" color={getStatusColor(match.status)} />
+                          </TableCell>
+                          <TableCell>{match.matched_file}</TableCell>
+                        </TableRow>
                       ))}
-                    </Grid>
+                    </TableBody>
+                  </Table>
+                </TableContainer>
 
-                    {/* Completion Progress Bar */}
-                    <Box mb={3}>
-                      <Box display="flex" justifyContent="space-between" mb={1}>
-                        <Typography variant="body2" fontWeight={700}>
-                          Completion Rate
-                        </Typography>
-                        <Typography variant="body2" fontWeight={700} color="primary">
-                          {rfpResult.completion_rate.toFixed(1)}%
-                        </Typography>
-                      </Box>
-                      <LinearProgress
-                        variant="determinate"
-                        value={rfpResult.completion_rate}
-                        color={
-                          rfpResult.completion_rate >= 80
-                            ? 'success'
-                            : rfpResult.completion_rate >= 60
-                            ? 'warning'
-                            : 'error'
-                        }
-                        sx={{ height: 10, borderRadius: 5 }}
-                      />
-                    </Box>
-
-                    {/* Results Table */}
-                    <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 3, border: '1px solid #e2e8f0' }}>
-                      <Table>
-                        <TableHead>
-                          <TableRow sx={{ bgcolor: '#f8fafc' }}>
-                            <TableCell sx={{ fontWeight: 700 }}>Required Document</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Description</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Status</TableCell>
-                            <TableCell sx={{ fontWeight: 700 }}>Matched File</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {rfpResult.matches.map((match, matchIdx) => (
-                            <TableRow key={matchIdx} hover>
-                              <TableCell>
-                                <Typography variant="body2" fontWeight={600}>
-                                  {match.required_document}
-                                </Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2" color="text.secondary">
-                                  {match.description || "No description available"}
-                                </Typography>
-                              </TableCell>
-                              <TableCell>
-                                <Chip
-                                  label={match.status}
-                                  color={getStatusColor(match.status)}
-                                  size="small"
-                                  sx={{ fontWeight: 600 }}
-                                />
-                              </TableCell>
-                              <TableCell>
-                                <Typography variant="body2" fontWeight={600}>
-                                  {match.matched_file}
-                                </Typography>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
-
-                    {/* Download Single RFP CSV */}
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mt={3}>
-                      <Button
-                        variant="outlined"
-                        startIcon={<Download />}
-                        onClick={() => downloadSingleRfpCSV(rfpResult)}
-                        sx={{ fontWeight: 700 }}
-                      >
-                        📥 Download CSV
-                      </Button>
-                      <Typography variant="body2" color="text.secondary" fontWeight={600}>
-                        💰 Cost: ${rfpResult.extraction_cost.toFixed(4)}
-                      </Typography>
-                    </Box>
-                  </AccordionDetails>
-                </Accordion>
-              ))}
-
-              {/* Action Buttons */}
-              <Box display="flex" gap={2} justifyContent="center" mt={4}>
-                <Button
-                  variant="outlined"
-                  size="large"
-                  onClick={() => {
-                    setResults(null);
-                    setRfpFiles([]);
-                    setProvidedFiles([]);
-                  }}
-                  sx={{
-                    px: 4,
-                    py: 1.5,
-                    borderRadius: 3,
-                    fontWeight: 700,
-                    borderWidth: 2,
-                    '&:hover': {
-                      borderWidth: 2,
-                    },
-                  }}
-                >
-                  🔄 New Analysis
-                </Button>
-                <Button
-                  variant="contained"
-                  size="large"
-                  onClick={() => navigate('/dashboard')}
-                  sx={{
-                    px: 4,
-                    py: 1.5,
-                    borderRadius: 3,
-                    fontWeight: 700,
-                    background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                    boxShadow: '0 8px 24px rgba(99, 102, 241, 0.4)',
-                  }}
-                >
-                  📊 View Dashboard
-                </Button>
-              </Box>
-            </Box>
-          </Fade>
+                <Divider sx={{ my: 3 }} />
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="space-between">
+                  <Typography color="text.secondary">
+                    Extraction cost: ${rfpResult.extraction_cost.toFixed(4)}
+                  </Typography>
+                  {rfpResult.analysis_id && (
+                    <Button onClick={() => navigate(`/analysis/${rfpResult.analysis_id}`)}>
+                      Open saved analysis
+                    </Button>
+                  )}
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
         )}
-      </Container>
-    </>
+      </Stack>
+    </WorkspaceShell>
   );
 }

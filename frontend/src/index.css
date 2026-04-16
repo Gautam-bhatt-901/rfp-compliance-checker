@@ -1,132 +1,129 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  color-scheme: light;
+  --ledger-primary: #095ab4;
+  --ledger-primary-dark: #00458f;
+  --ledger-secondary: #4b5f83;
+  --ledger-tertiary: #815100;
+  --ledger-surface: #f9f9ff;
+  --ledger-surface-low: #f2f3fb;
+  --ledger-surface-high: #e7e8f0;
+  --ledger-paper: #ffffff;
+  --ledger-outline: #c2c6d4;
+  --ledger-ink: #191c21;
+  --ledger-gradient: linear-gradient(135deg, #000666 0%, #1a237e 100%);
+}
 
 * {
-  margin: 0;
-  padding: 0;
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  min-height: 100vh;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+  color: var(--ledger-ink);
+  background:
+    radial-gradient(circle at top left, rgba(9, 90, 180, 0.08), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(198, 127, 0, 0.08), transparent 22%),
+    linear-gradient(180deg, #fdfdff 0%, #f7f8ff 45%, #f9f9ff 100%);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: linear-gradient(135deg, #f8fafc 0%, #e0e7ff 100%);
-  min-height: 100vh;
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }
 
 #root {
   min-height: 100vh;
 }
 
-/* Smooth scrolling */
-html {
-  scroll-behavior: smooth;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #6366f1, #4f46e5);
-  border-radius: 10px;
-  border: 2px solid #f1f5f9;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #4f46e5, #3730a3);
-}
-
-/* Smooth fade-in animation */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.fade-in {
-  animation: fadeIn 0.6s ease-out;
-}
-
-/* Pulse animation for loading states */
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Gradient text effect */
-.gradient-text {
-  background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
+.ledger-gradient-text {
+  background: var(--ledger-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Glass morphism effect */
-.glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+.ledger-glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
-/* Floating animation */
-@keyframes float {
-  0%, 100% {
-    transform: translateY(0px);
+.ledger-surface {
+  background: var(--ledger-paper);
+}
+
+.ledger-shell-bg {
+  background:
+    radial-gradient(circle at 15% 20%, rgba(9, 90, 180, 0.08), transparent 30%),
+    radial-gradient(circle at 80% 0%, rgba(129, 81, 0, 0.08), transparent 24%),
+    var(--ledger-surface);
+}
+
+.ledger-mesh {
+  background-image: radial-gradient(circle at 2px 2px, rgba(255, 255, 255, 0.16) 1px, transparent 0);
+  background-size: 32px 32px;
+}
+
+.ledger-shimmer {
+  background: linear-gradient(90deg, #1a237e 0%, #4c56af 50%, #1a237e 100%);
+  background-size: 200% 100%;
+  animation: ledgerShimmer 2.4s linear infinite;
+}
+
+.ledger-float {
+  animation: ledgerFloat 6s ease-in-out infinite;
+}
+
+@keyframes ledgerShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes ledgerFloat {
+  0%,
+  100% {
+    transform: translateY(0);
   }
   50% {
     transform: translateY(-10px);
   }
 }
 
-.float {
-  animation: float 3s ease-in-out infinite;
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
 
-/* Shimmer effect for loading */
-@keyframes shimmer {
-  0% {
-    background-position: -1000px 0;
-  }
-  100% {
-    background-position: 1000px 0;
-  }
+::-webkit-scrollbar-track {
+  background: #eef1f9;
 }
 
-.shimmer {
-  background: linear-gradient(
-    to right,
-    #f0f0f0 4%,
-    #f8f8f8 25%,
-    #f0f0f0 36%
-  );
-  background-size: 1000px 100%;
-  animation: shimmer 2s infinite;
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(9, 90, 180, 0.9), rgba(75, 95, 131, 0.9));
+  border-radius: 999px;
+  border: 2px solid #eef1f9;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(0, 69, 143, 0.95), rgba(52, 71, 106, 0.95));
 }
